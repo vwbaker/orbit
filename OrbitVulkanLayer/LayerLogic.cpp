@@ -95,7 +95,7 @@ void LayerLogic::PostCallCreateDevice(VkPhysicalDevice physical_device,
   LOG("PostCallCreateDevice");
   physical_device_manager_.TrackPhysicalDevice(physical_device, *device);
   queue_family_info_manager_.InitializeQueueFamilyInfo(physical_device);
-  timer_query_pool_.InitializeTimerQueryPool(*device, physical_device);
+  timer_query_pool_.InitializeTimerQueryPool(*device);
 }
 
 void LayerLogic::PostCallDestroyDevice(VkDevice device,

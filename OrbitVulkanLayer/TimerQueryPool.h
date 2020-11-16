@@ -15,13 +15,8 @@ namespace orbit_vulkan_layer {
 
 class TimerQueryPool {
  public:
-  explicit TimerQueryPool(DispatchTable* dispatch_table,
-                          QueueFamilyInfoManager* queue_family_info_manager,
-                          PhysicalDeviceManager* physical_device_manager)
-      : dispatch_table_(dispatch_table),
-        queue_family_info_manager_(queue_family_info_manager),
-        physical_device_manager_(physical_device_manager) {}
-  void InitializeTimerQueryPool(const VkDevice& device, const VkPhysicalDevice& physical_device);
+  explicit TimerQueryPool(DispatchTable* dispatch_table) : dispatch_table_(dispatch_table) {}
+  void InitializeTimerQueryPool(const VkDevice& device);
   [[nodiscard]] VkQueryPool GetQueryPool(const VkDevice& device);
   [[nodiscard]] bool NextReadyQuerySlot(const VkDevice& device, uint32_t* allocated_index);
 
@@ -38,12 +33,7 @@ class TimerQueryPool {
 
   static constexpr uint32_t kNumPhysicalTimerQuerySlots = 65536;
 
-  void CalibrateGPUTimeStamps(const VkDevice& device, const VkPhysicalDevice& physical_device,
-                              const VkQueryPool& query_pool);
-
   DispatchTable* dispatch_table_;
-  QueueFamilyInfoManager* queue_family_info_manager_;
-  PhysicalDeviceManager* physical_device_manager_;
   absl::Mutex mutex_;
   absl::flat_hash_map<VkDevice, VkQueryPool> device_to_query_pool_;
 

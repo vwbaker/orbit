@@ -37,18 +37,6 @@ class PhysicalDeviceManager {
     device_to_physical_device_.erase(device);
   }
 
-  void RegisterApproxCpuTimestampOffset(const VkPhysicalDevice& physical_device,
-                                        int64_t approx_cpu_timestamp_offset) {
-    absl::WriterMutexLock lock(&mutex_);
-    physical_device_to_approx_cpu_time_offset_[physical_device] = approx_cpu_timestamp_offset;
-  }
-
-  [[nodiscard]] int64_t GetApproxCpuTimestampOffset(const VkPhysicalDevice& physical_device) {
-    absl::ReaderMutexLock lock(&mutex_);
-    CHECK(physical_device_to_approx_cpu_time_offset_.contains(physical_device));
-    return physical_device_to_approx_cpu_time_offset_.at(physical_device);
-  }
-
   [[nodiscard]] VkPhysicalDeviceProperties GetPhysicalDeviceProperties(
       const VkPhysicalDevice& physical_device);
 
@@ -57,7 +45,6 @@ class PhysicalDeviceManager {
   DispatchTable* dispatch_table_;
   absl::flat_hash_map<VkPhysicalDevice, VkPhysicalDeviceProperties> physical_device_to_properties_;
   absl::flat_hash_map<VkDevice, VkPhysicalDevice> device_to_physical_device_;
-  absl::flat_hash_map<VkPhysicalDevice, int64_t> physical_device_to_approx_cpu_time_offset_;
 };
 
 }  // namespace orbit_vulkan_layer

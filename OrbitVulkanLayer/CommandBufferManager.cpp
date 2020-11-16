@@ -322,7 +322,6 @@ void CommandBufferManager::CompleteSubmits(const VkDevice& device) {
       physical_device_manager_->GetPhysicalDeviceOfLogicalDevice(device);
   const float timestamp_period =
       physical_device_manager_->GetPhysicalDeviceProperties(physical_device).limits.timestampPeriod;
-  int64_t gpu_cpu_offset = physical_device_manager_->GetApproxCpuTimestampOffset(physical_device);
 
   std::vector<uint32_t> query_slots_to_reset;
   for (const auto& completed_submission : completed_submissions) {
@@ -332,7 +331,6 @@ void CommandBufferManager::CompleteSubmits(const VkDevice& device) {
     submission_proto.set_thread_id(meta_info.thread_id);
     submission_proto.set_pre_submission_cpu_timestamp(meta_info.pre_submission_cpu_timestamp);
     submission_proto.set_post_submission_cpu_timestamp(meta_info.post_submission_cpu_timestamp);
-    submission_proto.set_gpu_cpu_time_offset(gpu_cpu_offset);
     for (const auto& completed_submit : completed_submission.submit_infos) {
       orbit_grpc_protos::GpuSubmitInfo* submit_info_proto = submission_proto.add_submit_infos();
       for (const auto& completed_command_buffer : completed_submit.command_buffers) {
