@@ -19,6 +19,60 @@
 
 namespace orbit_vulkan_layer {
 
+namespace internal {
+enum MarkerType { kDebugMarkerBegin = 0, kDebugMarkerEnd };
+
+struct SubmissionMetaInformation {
+  uint64_t pre_submission_cpu_timestamp;
+  uint64_t post_submission_cpu_timestamp;
+  int32_t thread_id;
+};
+
+struct Marker {
+  MarkerType type;
+  std::optional<uint32_t> slot_index;
+  std::string text;
+};
+
+struct SubmittedMarker {
+  SubmissionMetaInformation meta_information;
+  uint32_t slot_index;
+};
+
+struct MarkerState {
+  std::optional<SubmittedMarker> begin_info;
+  std::optional<SubmittedMarker> end_info;
+  std::string text;
+  size_t depth;
+};
+
+struct QueueMarkerState {
+  std::stack<MarkerState> marker_stack;
+};
+
+struct CommandBufferState {
+  std::optional<uint32_t> command_buffer_begin_slot_index;
+  std::optional<uint32_t> command_buffer_end_slot_index = std::nullopt;
+  std::vector<Marker> markers;
+};
+
+struct SubmittedCommandBuffer {
+  uint32_t command_buffer_begin_slot_index;
+  uint32_t command_buffer_end_slot_index;
+};
+
+struct SubmitInfo {
+  std::vector<SubmittedCommandBuffer> command_buffers;
+};
+
+struct QueueSubmission {
+  SubmissionMetaInformation meta_information;
+  std::vector<SubmitInfo> submit_infos;
+  std::vector<MarkerState> completed_markers;
+  uint32_t num_begin_markers = 0;
+};
+}  // namespace internal
+
 /*
  * This class is responsible to track command buffers and command pools.
  * TODO: So far it only tracks the allocation/de-allocation of buffers and pools.
@@ -52,7 +106,7 @@ class CommandBufferManager {
   void MarkDebugMarkerBegin(const VkCommandBuffer& command_buffer, const char* text);
   void MarkDebugMarkerEnd(const VkCommandBuffer& command_buffer);
 
-  void DoPreSubmitQueue(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits);
+  void PersistSubmitInformation(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits);
   void DoPostSubmitQueue(const VkQueue& queue, uint32_t submit_count, const VkSubmitInfo* submits);
 
   void CompleteSubmits(const VkDevice& device);
@@ -62,65 +116,22 @@ class CommandBufferManager {
   void ResetCommandPool(const VkCommandPool& command_pool);
 
  private:
-  enum MarkerType { kDebugMarkerBegin = 0, kDebugMarkerEnd };
+  uint32_t RecordTimestamp(const VkCommandBuffer& command_buffer,
+                           const VkPipelineStageFlagBits& pipeline_stage_flags);
 
-  struct SubmissionMetaInformation {
-    uint64_t pre_submission_cpu_timestamp;
-    uint64_t post_submission_cpu_timestamp;
-    int32_t thread_id;
-  };
+  std::vector<internal::QueueSubmission> PullCompletedSubmissions(const VkDevice& device,
+                                                                  const VkQueryPool& query_pool);
 
-  struct Marker {
-    MarkerType type;
-    std::optional<uint32_t> slot_index;
-    std::string text;
-  };
-
-  struct SubmittedMarker {
-    SubmissionMetaInformation meta_information;
-    uint32_t slot_index;
-  };
-
-  struct MarkerState {
-    std::optional<SubmittedMarker> begin_info;
-    std::optional<SubmittedMarker> end_info;
-    std::string text;
-    size_t depth;
-  };
-
-  struct QueueMarkerState {
-    std::stack<MarkerState> marker_stack;
-  };
-
-  struct CommandBufferState {
-    std::optional<uint32_t> command_buffer_begin_slot_index;
-    std::optional<uint32_t> command_buffer_end_slot_index = std::nullopt;
-    std::vector<Marker> markers;
-  };
-
-  struct SubmittedCommandBuffer {
-    uint32_t command_buffer_begin_slot_index;
-    uint32_t command_buffer_end_slot_index;
-  };
-
-  struct SubmitInfo {
-    std::vector<SubmittedCommandBuffer> command_buffers;
-  };
-
-  struct QueueSubmission {
-    SubmissionMetaInformation meta_information;
-    std::vector<SubmitInfo> submit_infos;
-    std::vector<MarkerState> completed_markers;
-    uint32_t num_begin_markers = 0;
-  };
+  uint64_t QueryGpuTimestampNs(const VkDevice& device, const VkQueryPool& query_pool,
+                               uint32_t slot_index, float timestamp_period);
 
   absl::Mutex mutex_;
   absl::flat_hash_map<VkCommandPool, absl::flat_hash_set<VkCommandBuffer>> pool_to_command_buffers_;
   absl::flat_hash_map<VkCommandBuffer, VkDevice> command_buffer_to_device_;
 
-  absl::flat_hash_map<VkCommandBuffer, CommandBufferState> command_buffer_to_state_;
-  absl::flat_hash_map<VkQueue, std::vector<QueueSubmission>> queue_to_submissions_;
-  absl::flat_hash_map<VkQueue, QueueMarkerState> queue_to_markers_;
+  absl::flat_hash_map<VkCommandBuffer, internal::CommandBufferState> command_buffer_to_state_;
+  absl::flat_hash_map<VkQueue, std::vector<internal::QueueSubmission>> queue_to_submissions_;
+  absl::flat_hash_map<VkQueue, internal::QueueMarkerState> queue_to_markers_;
 
   DispatchTable* dispatch_table_;
   TimerQueryPool* timer_query_pool_;

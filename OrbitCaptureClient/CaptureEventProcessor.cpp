@@ -21,7 +21,7 @@ using orbit_grpc_protos::CaptureEvent;
 using orbit_grpc_protos::FunctionCall;
 using orbit_grpc_protos::GpuCommandBuffer;
 using orbit_grpc_protos::GpuJob;
-using orbit_grpc_protos::GpuQueueSubmisssion;
+using orbit_grpc_protos::GpuQueueSubmission;
 using orbit_grpc_protos::InternedCallstack;
 using orbit_grpc_protos::InternedString;
 using orbit_grpc_protos::IntrospectionScope;
@@ -228,7 +228,7 @@ void CaptureEventProcessor::ProcessGpuJob(const GpuJob& gpu_job) {
   timer_start_to_finish.set_type(TimerInfo::kGpuActivity);
   capture_listener_->OnTimer(std::move(timer_start_to_finish));
 
-  const GpuQueueSubmisssion* matching_gpu_submission = FindMatchingGpuQueueSubmission(gpu_job);
+  const GpuQueueSubmission* matching_gpu_submission = FindMatchingGpuQueueSubmission(gpu_job);
   if (matching_gpu_submission == nullptr || matching_gpu_submission->num_begin_markers() > 0) {
     tid_to_submission_time_to_gpu_job_[gpu_job.tid()][gpu_job.amdgpu_cs_ioctl_time_ns()] = gpu_job;
   }
@@ -238,42 +238,47 @@ void CaptureEventProcessor::ProcessGpuJob(const GpuJob& gpu_job) {
 
   DoProcessGpuQueueSubmission(*matching_gpu_submission, gpu_job);
 
-  if (!HasUnprocessedBeginMarkers(matching_gpu_submission->thread_id(),
-                                  matching_gpu_submission->post_submission_cpu_timestamp())) {
+  if (!HasUnprocessedBeginMarkers(
+          matching_gpu_submission->meta_info().thread_id(),
+          matching_gpu_submission->meta_info().post_submission_cpu_timestamp())) {
     tid_to_post_submission_time_to_gpu_submission_.at(gpu_job.tid())
-        .erase(matching_gpu_submission->post_submission_cpu_timestamp());
+        .erase(matching_gpu_submission->meta_info().post_submission_cpu_timestamp());
   }
 }
 
 void CaptureEventProcessor::ProcessGpuQueueSubmission(
-    const GpuQueueSubmisssion& gpu_queue_submission) {
-  const GpuJob* matching_gpu_job = FindMatchingGpuJob(
-      gpu_queue_submission.thread_id(), gpu_queue_submission.pre_submission_cpu_timestamp(),
-      gpu_queue_submission.post_submission_cpu_timestamp());
+    const GpuQueueSubmission& gpu_queue_submission) {
+  const GpuJob* matching_gpu_job =
+      FindMatchingGpuJob(gpu_queue_submission.meta_info().thread_id(),
+                         gpu_queue_submission.meta_info().pre_submission_cpu_timestamp(),
+                         gpu_queue_submission.meta_info().post_submission_cpu_timestamp());
 
   if (matching_gpu_job == nullptr || gpu_queue_submission.num_begin_markers() > 0) {
-    tid_to_post_submission_time_to_gpu_submission_
-        [gpu_queue_submission.thread_id()][gpu_queue_submission.post_submission_cpu_timestamp()] =
-            gpu_queue_submission;
+    tid_to_post_submission_time_to_gpu_submission_[gpu_queue_submission.meta_info().thread_id()]
+                                                  [gpu_queue_submission.meta_info()
+                                                       .post_submission_cpu_timestamp()] =
+                                                      gpu_queue_submission;
   }
   if (gpu_queue_submission.num_begin_markers() > 0) {
-    tid_to_post_submission_time_to_num_begin_markers_
-        [gpu_queue_submission.thread_id()][gpu_queue_submission.post_submission_cpu_timestamp()] =
-            gpu_queue_submission.num_begin_markers();
+    tid_to_post_submission_time_to_num_begin_markers_[gpu_queue_submission.meta_info().thread_id()]
+                                                     [gpu_queue_submission.meta_info()
+                                                          .post_submission_cpu_timestamp()] =
+                                                         gpu_queue_submission.num_begin_markers();
   }
   if (matching_gpu_job == nullptr) {
     return;
   }
   DoProcessGpuQueueSubmission(gpu_queue_submission, *matching_gpu_job);
 
-  if (!HasUnprocessedBeginMarkers(gpu_queue_submission.thread_id(),
-                                  gpu_queue_submission.post_submission_cpu_timestamp())) {
-    tid_to_submission_time_to_gpu_job_.at(gpu_queue_submission.thread_id())
+  if (!HasUnprocessedBeginMarkers(
+          gpu_queue_submission.meta_info().thread_id(),
+          gpu_queue_submission.meta_info().post_submission_cpu_timestamp())) {
+    tid_to_submission_time_to_gpu_job_.at(gpu_queue_submission.meta_info().thread_id())
         .erase(matching_gpu_job->amdgpu_cs_ioctl_time_ns());
   }
 }
 
-const GpuQueueSubmisssion* CaptureEventProcessor::FindMatchingGpuQueueSubmission(
+const GpuQueueSubmission* CaptureEventProcessor::FindMatchingGpuQueueSubmission(
     const orbit_grpc_protos::GpuJob& gpu_job) {
   const auto& post_submission_time_to_gpu_submission_it =
       tid_to_post_submission_time_to_gpu_submission_.find(gpu_job.tid());
@@ -291,9 +296,10 @@ const GpuQueueSubmisssion* CaptureEventProcessor::FindMatchingGpuQueueSubmission
     return nullptr;
   }
 
-  const GpuQueueSubmisssion* matching_gpu_submission = &upper_bound_gpu_submission_it->second;
+  const GpuQueueSubmission* matching_gpu_submission = &upper_bound_gpu_submission_it->second;
 
-  if (matching_gpu_submission->pre_submission_cpu_timestamp() > gpu_job.amdgpu_cs_ioctl_time_ns()) {
+  if (matching_gpu_submission->meta_info().pre_submission_cpu_timestamp() >
+      gpu_job.amdgpu_cs_ioctl_time_ns()) {
     return nullptr;
   }
 
@@ -331,7 +337,7 @@ const GpuJob* CaptureEventProcessor::FindMatchingGpuJob(int32_t thread_id,
 }
 
 void CaptureEventProcessor::DoProcessGpuQueueSubmission(
-    const GpuQueueSubmisssion& gpu_queue_submission, const GpuJob& matching_gpu_job) {
+    const GpuQueueSubmission& gpu_queue_submission, const GpuJob& matching_gpu_job) {
   constexpr const char* command_buffer_text = "command buffer";
   uint64_t command_buffer_text_key = GetStringHashAndSendToListenerIfNecessary(command_buffer_text);
   std::string timeline;
@@ -360,7 +366,7 @@ void CaptureEventProcessor::DoProcessGpuQueueSubmission(
       command_buffer_timer.set_depth((matching_gpu_job.depth() * 2) + 1);
       command_buffer_timer.set_timeline_hash(timeline_hash);
       command_buffer_timer.set_processor(-1);
-      command_buffer_timer.set_thread_id(gpu_queue_submission.thread_id());
+      command_buffer_timer.set_thread_id(gpu_queue_submission.meta_info().thread_id());
       command_buffer_timer.set_type(TimerInfo::kGpuCommandBuffer);
       command_buffer_timer.set_user_data_key(command_buffer_text_key);
       capture_listener_->OnTimer(command_buffer_timer);
@@ -377,16 +383,17 @@ void CaptureEventProcessor::DoProcessGpuQueueSubmission(
       const auto& begin_marker_info = completed_marker.begin_marker();
 
       if (tid_to_post_submission_time_to_gpu_submission_.contains(
-              begin_marker_info.begin_thread_id())) {
+              begin_marker_info.meta_info().thread_id())) {
         const auto& post_submission_time_to_submission =
-            tid_to_post_submission_time_to_gpu_submission_.at(begin_marker_info.begin_thread_id());
+            tid_to_post_submission_time_to_gpu_submission_.at(
+                begin_marker_info.meta_info().thread_id());
         if (post_submission_time_to_submission.count(
-                begin_marker_info.begin_post_submission_cpu_timestamp()) > 0) {
+                begin_marker_info.meta_info().post_submission_cpu_timestamp()) > 0) {
           know_begin = true;
 
-          const GpuQueueSubmisssion& matching_begin_submission =
+          const GpuQueueSubmission& matching_begin_submission =
               post_submission_time_to_submission.at(
-                  begin_marker_info.begin_post_submission_cpu_timestamp());
+                  begin_marker_info.meta_info().post_submission_cpu_timestamp());
 
           std::optional<GpuCommandBuffer> begin_submission_first_command_buffer;
           for (const auto& submit_info : matching_begin_submission.submit_infos()) {
@@ -401,21 +408,22 @@ void CaptureEventProcessor::DoProcessGpuQueueSubmission(
           CHECK(begin_submission_first_command_buffer.has_value());
 
           const GpuJob* matching_begin_job =
-              FindMatchingGpuJob(begin_marker_info.begin_thread_id(),
-                                 begin_marker_info.begin_pre_submission_cpu_timestamp(),
-                                 begin_marker_info.begin_post_submission_cpu_timestamp());
+              FindMatchingGpuJob(begin_marker_info.meta_info().thread_id(),
+                                 begin_marker_info.meta_info().pre_submission_cpu_timestamp(),
+                                 begin_marker_info.meta_info().post_submission_cpu_timestamp());
           CHECK(matching_begin_job != nullptr);
 
-          marker_timer.set_start(completed_marker.begin_marker().begin_gpu_timestamp_ns() +
+          marker_timer.set_start(completed_marker.begin_marker().gpu_timestamp_ns() +
                                  matching_begin_job->gpu_hardware_start_time_ns() -
                                  begin_submission_first_command_buffer->begin_gpu_timestamp_ns());
-          if (matching_begin_submission.thread_id() == gpu_queue_submission.thread_id()) {
-            marker_timer.set_thread_id(gpu_queue_submission.thread_id());
+          if (matching_begin_submission.meta_info().thread_id() ==
+              gpu_queue_submission.meta_info().thread_id()) {
+            marker_timer.set_thread_id(gpu_queue_submission.meta_info().thread_id());
           }
 
           DecrementUnprocessedBeginMarkers(
-              matching_begin_submission.thread_id(),
-              matching_begin_submission.post_submission_cpu_timestamp());
+              matching_begin_submission.meta_info().thread_id(),
+              matching_begin_submission.meta_info().post_submission_cpu_timestamp());
         }
       }
     }

@@ -177,13 +177,17 @@ message AddressInfo {
   }
 }
 
-message GpuQueueSubmisssion {
+message GpuQueueSubmissionMetaInfo {
   int32 thread_id = 1;
   uint64 pre_submission_cpu_timestamp = 2;
   uint64 post_submission_cpu_timestamp = 3;
-  repeated GpuSubmitInfo submit_infos = 4;
-  repeated GpuDebugMarker completed_markers = 5;
-  uint32 num_begin_markers = 6;
+}
+
+message GpuQueueSubmission {
+  GpuQueueSubmissionMetaInfo meta_info = 1;
+  repeated GpuSubmitInfo submit_infos = 2;
+  repeated GpuDebugMarker completed_markers = 3;
+  uint32 num_begin_markers = 4;
 }
 
 message GpuSubmitInfo {
@@ -196,10 +200,8 @@ message GpuCommandBuffer {
 }
 
 message GpuDebugMarkerBeginInfo {
-  uint64 begin_gpu_timestamp_ns = 1;
-  int32 begin_thread_id = 2;
-  uint64 begin_pre_submission_cpu_timestamp = 3;
-  uint64 begin_post_submission_cpu_timestamp = 4;
+  GpuQueueSubmissionMetaInfo meta_info = 1;
+  uint64 gpu_timestamp_ns = 2;
 }
 
 message GpuDebugMarker {
@@ -225,6 +227,6 @@ message CaptureEvent {
     InternedTracepointInfo interned_tracepoint_info = 9;
     TracepointEvent tracepoint_event = 10;
     IntrospectionScope introspection_scope = 12;
-    GpuQueueSubmisssion gpu_queue_submission = 13;
+    GpuQueueSubmission gpu_queue_submission = 13;
   }
 }

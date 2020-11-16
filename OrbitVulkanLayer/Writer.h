@@ -23,7 +23,7 @@ class Writer {
  public:
   explicit Writer(std::string filename) : filename_(std::move(filename)) {}
 
-  void WriteQueueSubmission(const orbit_grpc_protos::GpuQueueSubmisssion& submisssion) {
+  void WriteQueueSubmission(const orbit_grpc_protos::GpuQueueSubmission& submisssion) {
     LOG("WriteQueueSubmission");
     orbit_grpc_protos::CaptureEvent event;
     event.mutable_gpu_queue_submission()->CopyFrom(submisssion);
