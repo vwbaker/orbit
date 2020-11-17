@@ -10,6 +10,7 @@
 #include "DispatchTable.h"
 #include "OrbitBase/Logging.h"
 #include "OrbitConnector.h"
+#include "PhysicalDeviceManager.h"
 #include "TimerQueryPool.h"
 #include "Writer.h"
 #include "absl/container/flat_hash_map.h"

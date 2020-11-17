@@ -94,15 +94,12 @@ void LayerLogic::PostCallCreateDevice(VkPhysicalDevice physical_device,
                                       VkDevice* device) {
   LOG("PostCallCreateDevice");
   physical_device_manager_.TrackPhysicalDevice(physical_device, *device);
-  queue_family_info_manager_.InitializeQueueFamilyInfo(physical_device);
   timer_query_pool_.InitializeTimerQueryPool(*device);
 }
 
 void LayerLogic::PostCallDestroyDevice(VkDevice device,
                                        const VkAllocationCallbacks* /*allocator*/) {
   LOG("PostCallDestroyDevice");
-  queue_family_info_manager_.RemoveQueueFamilyInfo(
-      physical_device_manager_.GetPhysicalDeviceOfLogicalDevice(device));
   physical_device_manager_.UntrackLogicalDevice(device);
   dispatch_table_.RemoveDeviceDispatchTable(device);
 }

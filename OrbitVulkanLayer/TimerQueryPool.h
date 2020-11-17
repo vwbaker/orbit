@@ -7,7 +7,6 @@
 
 #include "DispatchTable.h"
 #include "OrbitBase/Logging.h"
-#include "QueueFamilyInfoManager.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 

@@ -36,7 +36,6 @@ class LayerLogic {
  public:
   LayerLogic()
       : physical_device_manager_(&dispatch_table_),
-        queue_family_info_manager_(&dispatch_table_),
         timer_query_pool_(&dispatch_table_),
         writer_("/mnt/developer/orbit_test_file"),
         connector_(&writer_),
@@ -207,7 +206,6 @@ class LayerLogic {
  private:
   DispatchTable dispatch_table_;
   PhysicalDeviceManager physical_device_manager_;
-  QueueFamilyInfoManager queue_family_info_manager_;
   TimerQueryPool timer_query_pool_;
   Writer writer_;
   OrbitConnector connector_;

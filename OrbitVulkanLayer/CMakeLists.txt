@@ -24,8 +24,6 @@ target_sources(OrbitVulkanLayer PRIVATE
         OrbitConnector.h
         PhysicalDeviceManager.cpp
         PhysicalDeviceManager.h
-        QueueFamilyInfoManager.cpp
-        QueueFamilyInfoManager.h
         QueueManager.cpp
         QueueManager.h
         TimerQueryPool.cpp
