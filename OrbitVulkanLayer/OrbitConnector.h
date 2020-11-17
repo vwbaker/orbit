@@ -30,9 +30,9 @@ class OrbitConnector {
     while (!*exit_requested) {
       {
         std::ifstream f("/mnt/developer/orbit_layer_lock");
-        bool was_captureing = is_capturing;
+        bool was_capturing = *is_capturing;
         *is_capturing = f.good();
-        if (was_captureing && !f.good()) {
+        if (was_capturing && !f.good()) {
           writer->ClearStringInternPool();
         }
       }

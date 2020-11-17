@@ -125,6 +125,9 @@ class CommandBufferManager {
   uint64_t QueryGpuTimestampNs(const VkDevice& device, const VkQueryPool& query_pool,
                                uint32_t slot_index, float timestamp_period);
 
+  static void WriteMetaInfo(const internal::SubmissionMetaInformation meta_info,
+                            orbit_grpc_protos::GpuQueueSubmissionMetaInfo* target_proto);
+
   absl::Mutex mutex_;
   absl::flat_hash_map<VkCommandPool, absl::flat_hash_set<VkCommandBuffer>> pool_to_command_buffers_;
   absl::flat_hash_map<VkCommandBuffer, VkDevice> command_buffer_to_device_;
