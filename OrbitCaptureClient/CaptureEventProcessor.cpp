@@ -182,13 +182,14 @@ void CaptureEventProcessor::ProcessGpuJob(const GpuJob& gpu_job) {
   uint64_t timeline_hash = GetStringHashAndSendToListenerIfNecessary(timeline);
 
   int32_t thread_id = gpu_job.tid();
+  uint64_t amdgpu_cs_ioctl_time_ns = gpu_job.amdgpu_cs_ioctl_time_ns();
 
   constexpr const char* sw_queue = "sw queue";
   uint64_t sw_queue_key = GetStringHashAndSendToListenerIfNecessary(sw_queue);
 
   TimerInfo timer_user_to_sched;
   timer_user_to_sched.set_thread_id(thread_id);
-  timer_user_to_sched.set_start(gpu_job.amdgpu_cs_ioctl_time_ns());
+  timer_user_to_sched.set_start(amdgpu_cs_ioctl_time_ns);
   timer_user_to_sched.set_end(gpu_job.amdgpu_sched_run_job_time_ns());
   timer_user_to_sched.set_depth(gpu_job.depth() * 2);
   timer_user_to_sched.set_user_data_key(sw_queue_key);
@@ -230,9 +231,10 @@ void CaptureEventProcessor::ProcessGpuJob(const GpuJob& gpu_job) {
   timer_start_to_finish.set_type(TimerInfo::kGpuActivity);
   capture_listener_->OnTimer(std::move(timer_start_to_finish));
 
-  const GpuQueueSubmission* matching_gpu_submission = FindMatchingGpuQueueSubmission(gpu_job);
+  const GpuQueueSubmission* matching_gpu_submission =
+      FindMatchingGpuQueueSubmission(thread_id, amdgpu_cs_ioctl_time_ns);
   if (matching_gpu_submission == nullptr || matching_gpu_submission->num_begin_markers() > 0) {
-    tid_to_submission_time_to_gpu_job_[thread_id][gpu_job.amdgpu_cs_ioctl_time_ns()] = gpu_job;
+    tid_to_submission_time_to_gpu_job_[thread_id][amdgpu_cs_ioctl_time_ns] = gpu_job;
   }
   if (matching_gpu_submission == nullptr) {
     return;
@@ -279,9 +281,9 @@ void CaptureEventProcessor::ProcessGpuQueueSubmission(
 }
 
 const GpuQueueSubmission* CaptureEventProcessor::FindMatchingGpuQueueSubmission(
-    const orbit_grpc_protos::GpuJob& gpu_job) {
+    int32_t thread_id, uint64_t submit_time) {
   const auto& post_submission_time_to_gpu_submission_it =
-      tid_to_post_submission_time_to_gpu_submission_.find(gpu_job.tid());
+      tid_to_post_submission_time_to_gpu_submission_.find(thread_id);
   if (post_submission_time_to_gpu_submission_it ==
       tid_to_post_submission_time_to_gpu_submission_.end()) {
     return nullptr;
@@ -290,16 +292,15 @@ const GpuQueueSubmission* CaptureEventProcessor::FindMatchingGpuQueueSubmission(
   const auto& post_submission_time_to_gpu_submission =
       post_submission_time_to_gpu_submission_it->second;
 
-  auto upper_bound_gpu_submission_it =
-      post_submission_time_to_gpu_submission.upper_bound(gpu_job.amdgpu_cs_ioctl_time_ns());
-  if (upper_bound_gpu_submission_it == post_submission_time_to_gpu_submission.end()) {
+  auto lower_bound_gpu_submission_it =
+      post_submission_time_to_gpu_submission.lower_bound(submit_time);
+  if (lower_bound_gpu_submission_it == post_submission_time_to_gpu_submission.end()) {
     return nullptr;
   }
 
-  const GpuQueueSubmission* matching_gpu_submission = &upper_bound_gpu_submission_it->second;
+  const GpuQueueSubmission* matching_gpu_submission = &lower_bound_gpu_submission_it->second;
 
-  if (matching_gpu_submission->meta_info().pre_submission_cpu_timestamp() >
-      gpu_job.amdgpu_cs_ioctl_time_ns()) {
+  if (matching_gpu_submission->meta_info().pre_submission_cpu_timestamp() > submit_time) {
     return nullptr;
   }
 
@@ -557,6 +558,14 @@ void CaptureEventProcessor::ProcessGpuDebugMarkers(
     const std::optional<GpuCommandBuffer>& first_command_buffer, const std::string& timeline) {
   std::string timeline_marker = timeline + "_marker";
   uint64_t timeline_marker_hash = GetStringHashAndSendToListenerIfNecessary(timeline_marker);
+
+  const auto& submission_meta_info = gpu_queue_submission.meta_info();
+  const int32_t submission_thread_id = submission_meta_info.thread_id();
+  uint64_t submission_pre_submission_cpu_timestamp =
+      submission_meta_info.pre_submission_cpu_timestamp();
+  uint64_t submission_post_submission_cpu_timestamp =
+      submission_meta_info.post_submission_cpu_timestamp();
+
   for (const auto& completed_marker : gpu_queue_submission.completed_markers()) {
     CHECK(first_command_buffer != std::nullopt);
     TimerInfo marker_timer;
@@ -571,39 +580,43 @@ void CaptureEventProcessor::ProcessGpuDebugMarkers(
       const int32_t begin_marker_thread_id = begin_marker_meta_info.thread_id();
       uint64_t begin_marker_post_submission_cpu_timestamp =
           begin_marker_meta_info.post_submission_cpu_timestamp();
+      uint64_t begin_marker_pre_submission_cpu_timestamp =
+          begin_marker_meta_info.pre_submission_cpu_timestamp();
 
-      // TODO: If we receive the submissions out of order (which might actually happen) and the
+      const GpuQueueSubmission* matching_begin_submission = nullptr;
+      if (submission_pre_submission_cpu_timestamp == begin_marker_pre_submission_cpu_timestamp &&
+          submission_post_submission_cpu_timestamp == begin_marker_post_submission_cpu_timestamp &&
+          submission_thread_id == begin_marker_thread_id) {
+        matching_begin_submission = &gpu_queue_submission;
+      } else {
+        matching_begin_submission = FindMatchingGpuQueueSubmission(
+            begin_marker_thread_id, begin_marker_post_submission_cpu_timestamp);
+      }
+
+      // FIXME: If we receive the submissions out of order (which might actually happen) and the
       //  begin marker origins from a different submission (very uncommon, bust still allowed by the
       //  specification), we may end up in forgetting this submission.
-      if (tid_to_post_submission_time_to_gpu_submission_.contains(begin_marker_thread_id)) {
-        const auto& post_submission_time_to_submission =
-            tid_to_post_submission_time_to_gpu_submission_.at(begin_marker_thread_id);
-        if (post_submission_time_to_submission.count(begin_marker_post_submission_cpu_timestamp) >
-            0) {
-          const GpuQueueSubmission& matching_begin_submission =
-              post_submission_time_to_submission.at(begin_marker_post_submission_cpu_timestamp);
+      if (matching_begin_submission != nullptr) {
+        know_begin_submission = true;
 
-          know_begin_submission = true;
+        std::optional<GpuCommandBuffer> begin_submission_first_command_buffer =
+            FindFirstCommandBuffer(*matching_begin_submission);
+        CHECK(begin_submission_first_command_buffer.has_value());
 
-          std::optional<GpuCommandBuffer> begin_submission_first_command_buffer =
-              FindFirstCommandBuffer(matching_begin_submission);
-          CHECK(begin_submission_first_command_buffer.has_value());
+        const GpuJob* matching_begin_job = FindMatchingGpuJob(
+            begin_marker_thread_id, begin_marker_meta_info.pre_submission_cpu_timestamp(),
+            begin_marker_post_submission_cpu_timestamp);
+        CHECK(matching_begin_job != nullptr);
 
-          const GpuJob* matching_begin_job = FindMatchingGpuJob(
-              begin_marker_thread_id, begin_marker_meta_info.pre_submission_cpu_timestamp(),
-              begin_marker_post_submission_cpu_timestamp);
-          CHECK(matching_begin_job != nullptr);
-
-          marker_timer.set_start(completed_marker.begin_marker().gpu_timestamp_ns() +
-                                 matching_begin_job->gpu_hardware_start_time_ns() -
-                                 begin_submission_first_command_buffer->begin_gpu_timestamp_ns());
-          if (begin_marker_thread_id == gpu_queue_submission.meta_info().thread_id()) {
-            marker_timer.set_thread_id(begin_marker_thread_id);
-          }
-
-          DecrementUnprocessedBeginMarkers(begin_marker_thread_id,
-                                           begin_marker_post_submission_cpu_timestamp);
+        marker_timer.set_start(completed_marker.begin_marker().gpu_timestamp_ns() +
+                               matching_begin_job->gpu_hardware_start_time_ns() -
+                               begin_submission_first_command_buffer->begin_gpu_timestamp_ns());
+        if (begin_marker_thread_id == gpu_queue_submission.meta_info().thread_id()) {
+          marker_timer.set_thread_id(begin_marker_thread_id);
         }
+
+        DecrementUnprocessedBeginMarkers(begin_marker_thread_id,
+                                         begin_marker_post_submission_cpu_timestamp);
       }
     }
 

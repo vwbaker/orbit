@@ -59,8 +59,8 @@ class CaptureEventProcessor {
   const orbit_grpc_protos::GpuJob* FindMatchingGpuJob(int32_t thread_id,
                                                       uint64_t pre_submission_cpu_timestamp,
                                                       uint64_t post_submission_cpu_timestamp);
-  const orbit_grpc_protos::GpuQueueSubmission* FindMatchingGpuQueueSubmission(
-      const orbit_grpc_protos::GpuJob& gpu_job);
+  const orbit_grpc_protos::GpuQueueSubmission* FindMatchingGpuQueueSubmission(int32_t thread_id,
+                                                                              uint64_t submit_time);
   [[nodiscard]] bool HasUnprocessedBeginMarkers(int32_t thread_id,
                                                 uint64_t post_submission_timestamp) const;
   void DecrementUnprocessedBeginMarkers(int32_t thread_id, uint64_t post_submission_timestamp);
