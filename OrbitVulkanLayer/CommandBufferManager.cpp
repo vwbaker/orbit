@@ -456,7 +456,7 @@ uint64_t CommandBufferManager::QueryGpuTimestampNs(const VkDevice& device,
 }
 
 void CommandBufferManager::WriteMetaInfo(
-    const internal::SubmissionMetaInformation meta_info,
+    const internal::SubmissionMetaInformation& meta_info,
     orbit_grpc_protos::GpuQueueSubmissionMetaInfo* target_proto) {
   LOG("WriteMetaInfo");
   target_proto->set_thread_id(meta_info.thread_id);
