@@ -72,21 +72,29 @@ void CommandBufferManager::MarkCommandBufferEnd(const VkCommandBuffer& command_b
   if (!connector_->IsCapturing()) {
     return;
   }
-  mutex_.ReaderLock();
-  CHECK(command_buffer_to_state_.contains(command_buffer));
-  internal::CommandBufferState& command_buffer_state = command_buffer_to_state_.at(command_buffer);
-  if (!command_buffer_state.command_buffer_begin_slot_index.has_value()) {
-    return;
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    CHECK(command_buffer_to_state_.contains(command_buffer));
+    internal::CommandBufferState& command_buffer_state =
+        command_buffer_to_state_.at(command_buffer);
+    if (!command_buffer_state.command_buffer_begin_slot_index.has_value()) {
+      return;
+    }
   }
-  mutex_.ReaderUnlock();
 
   // RecordTimestamp will also acquire a reader lock. As we are fine with having multiple readers
   // we don't need to unlock here.
   uint32_t slot_index = RecordTimestamp(command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
 
-  // Writing to this field is safe, as there can't be any operation on this command buffer
-  // in parallel.
-  command_buffer_state.command_buffer_end_slot_index = std::make_optional(slot_index);
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    CHECK(command_buffer_to_state_.contains(command_buffer));
+    internal::CommandBufferState& command_buffer_state =
+        command_buffer_to_state_.at(command_buffer);
+    // Writing to this field is safe, as there can't be any operation on this command buffer
+    // in parallel.
+    command_buffer_state.command_buffer_end_slot_index = std::make_optional(slot_index);
+  }
 }
 
 void CommandBufferManager::MarkDebugMarkerBegin(const VkCommandBuffer& command_buffer,
