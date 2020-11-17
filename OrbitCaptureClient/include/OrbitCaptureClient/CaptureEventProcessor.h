@@ -40,9 +40,22 @@ class CaptureEventProcessor {
   void ProcessTracepointEvent(const orbit_grpc_protos::TracepointEvent& tracepoint_event);
   void ProcessGpuQueueSubmission(const orbit_grpc_protos::GpuQueueSubmission& gpu_command_buffer);
 
+  // Vulkan Layer related helpers:
   void DoProcessGpuQueueSubmission(
       const orbit_grpc_protos::GpuQueueSubmission& gpu_queue_submission,
       const orbit_grpc_protos::GpuJob& matching_gpu_job);
+  void ProcessGpuCommandBuffers(
+      const orbit_grpc_protos::GpuQueueSubmission& gpu_queue_submission,
+      const orbit_grpc_protos::GpuJob& matching_gpu_job,
+      const std::optional<orbit_grpc_protos::GpuCommandBuffer>& first_command_buffer,
+      uint64_t timeline_hash);
+  void ProcessGpuDebugMarkers(
+      const orbit_grpc_protos::GpuQueueSubmission& gpu_queue_submission,
+      const orbit_grpc_protos::GpuJob& matching_gpu_job,
+      const std::optional<orbit_grpc_protos::GpuCommandBuffer>& first_command_buffer,
+      const std::string& timeline);
+  static std::optional<orbit_grpc_protos::GpuCommandBuffer> FindFirstCommandBuffer(
+      const orbit_grpc_protos::GpuQueueSubmission& gpu_queue_submission);
   const orbit_grpc_protos::GpuJob* FindMatchingGpuJob(int32_t thread_id,
                                                       uint64_t pre_submission_cpu_timestamp,
                                                       uint64_t post_submission_cpu_timestamp);
