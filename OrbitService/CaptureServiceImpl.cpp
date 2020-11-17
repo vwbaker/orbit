@@ -91,22 +91,6 @@ class SenderThreadCaptureEventBuffer final : public CaptureEventBuffer {
                                               kSendTimeInterval);
       if (stop_requested_) {
         stopped = true;
-
-        // now read the vulkan layer result:
-        const std::string file_name = "/mnt/developer/orbit_test_file";
-        std::ifstream file(file_name, std::ios::binary);
-        if (file.good()) {
-          google::protobuf::io::IstreamInputStream input_stream(&file);
-          google::protobuf::io::CodedInputStream coded_input(&input_stream);
-
-          CaptureEvent event;
-          while (ReadMessage(&event, &coded_input)) {
-            event_buffer_.emplace_back(std::move(event));
-          }
-
-          file.close();
-          std::remove(file_name.c_str());
-        }
       }
       std::vector<CaptureEvent> buffered_events = std::move(event_buffer_);
       event_buffer_.clear();
@@ -182,21 +166,12 @@ grpc::Status CaptureServiceImpl::Capture(
     listener->OnCaptureStartRequested(&capture_event_buffer);
   }
 
-  {
-    LOG("Requesting Vulkan Layer To Writer!?");
-    std::ofstream layer_start_capture_file("/mnt/developer/orbit_layer_lock");
-    layer_start_capture_file << "lock" << std::endl;
-    layer_start_capture_file.close();
-  }
-
   // The client asks for the capture to be stopped by calling WritesDone.
   // At that point, this call to Read will return false.
   // In the meantime, it blocks if no message is received.
   while (reader_writer->Read(&request)) {
   }
   LOG("Client finished writing on Capture's gRPC stream: stopping capture");
-
-  std::remove("/mnt/developer/orbit_layer_lock");
 
   {
     std::vector<std::thread> stop_threads;

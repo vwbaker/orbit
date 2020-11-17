@@ -55,7 +55,7 @@ void CommandBufferManager::MarkCommandBufferBegin(const VkCommandBuffer& command
     CHECK(!command_buffer_to_state_.contains(command_buffer));
     command_buffer_to_state_[command_buffer] = {};
   }
-  if (!connector_->IsCapturing()) {
+  if (!IsCapturing()) {
     return;
   }
 
@@ -69,7 +69,7 @@ void CommandBufferManager::MarkCommandBufferBegin(const VkCommandBuffer& command
 
 void CommandBufferManager::MarkCommandBufferEnd(const VkCommandBuffer& command_buffer) {
   LOG("MarkCommandBufferEnd");
-  if (!connector_->IsCapturing()) {
+  if (!IsCapturing()) {
     return;
   }
   {
@@ -110,7 +110,7 @@ void CommandBufferManager::MarkDebugMarkerBegin(const VkCommandBuffer& command_b
     state.markers.emplace_back(std::move(marker));
   }
 
-  if (!connector_->IsCapturing()) {
+  if (!IsCapturing()) {
     return;
   }
 
@@ -133,7 +133,7 @@ void CommandBufferManager::MarkDebugMarkerEnd(const VkCommandBuffer& command_buf
     state.markers.emplace_back(std::move(marker));
   }
 
-  if (!connector_->IsCapturing()) {
+  if (!IsCapturing()) {
     return;
   }
 
@@ -153,7 +153,7 @@ void CommandBufferManager::MarkDebugMarkerEnd(const VkCommandBuffer& command_buf
 void CommandBufferManager::PersistSubmitInformation(VkQueue queue, uint32_t submit_count,
                                                     const VkSubmitInfo* submits) {
   LOG("PersistSubmitInformation");
-  if (!connector_->IsCapturing()) {
+  if (!IsCapturing()) {
     return;
   }
 
@@ -203,7 +203,7 @@ void CommandBufferManager::DoPostSubmitQueue(const VkQueue& queue, uint32_t subm
     internal::QueueSubmission* queue_submission = nullptr;
 
     // TODO: What happens if we start capturing right between the pre- and post-submission.
-    if (queue_to_submissions_.contains(queue) && connector_->IsCapturing()) {
+    if (queue_to_submissions_.contains(queue) && IsCapturing()) {
       queue_submission = &queue_to_submissions_.at(queue).back();
       queue_submission->meta_information.post_submission_cpu_timestamp = MonotonicTimestampNs();
     }
@@ -268,12 +268,14 @@ void CommandBufferManager::CompleteSubmits(const VkDevice& device) {
 
   std::vector<uint32_t> query_slots_to_reset;
   for (const auto& completed_submission : completed_submissions) {
-    orbit_grpc_protos::GpuQueueSubmission submission_proto;
-    WriteMetaInfo(completed_submission.meta_information, submission_proto.mutable_meta_info());
+    orbit_grpc_protos::CaptureEvent capture_event;
+    orbit_grpc_protos::GpuQueueSubmission* submission_proto =
+        capture_event.mutable_gpu_queue_submission();
+    WriteMetaInfo(completed_submission.meta_information, submission_proto->mutable_meta_info());
 
     // Now for the command buffer timings:
     for (const auto& completed_submit : completed_submission.submit_infos) {
-      orbit_grpc_protos::GpuSubmitInfo* submit_info_proto = submission_proto.add_submit_infos();
+      orbit_grpc_protos::GpuSubmitInfo* submit_info_proto = submission_proto->add_submit_infos();
       for (const auto& completed_command_buffer : completed_submit.command_buffers) {
         orbit_grpc_protos::GpuCommandBuffer* command_buffer_proto =
             submit_info_proto->add_command_buffers();
@@ -294,13 +296,14 @@ void CommandBufferManager::CompleteSubmits(const VkDevice& device) {
     }
 
     // Now for the debug markers:
-    submission_proto.set_num_begin_markers(completed_submission.num_begin_markers);
+    submission_proto->set_num_begin_markers(completed_submission.num_begin_markers);
     for (const auto& marker_state : completed_submission.completed_markers) {
       uint64_t end_timestamp = QueryGpuTimestampNs(
           device, query_pool, marker_state.end_info->slot_index, timestamp_period);
 
-      orbit_grpc_protos::GpuDebugMarker* marker_proto = submission_proto.add_completed_markers();
-      marker_proto->set_text_key(writer_->InternStringIfNecessaryAndGetKey(marker_state.text));
+      orbit_grpc_protos::GpuDebugMarker* marker_proto = submission_proto->add_completed_markers();
+      marker_proto->set_text_key(
+          (*vulkan_layer_producer_)->InternStringIfNecessaryAndGetKey(marker_state.text));
       marker_proto->set_depth(marker_state.depth);
       marker_proto->set_end_gpu_timestamp_ns(end_timestamp);
 
@@ -319,7 +322,7 @@ void CommandBufferManager::CompleteSubmits(const VkDevice& device) {
       begin_debug_marker_proto->set_gpu_timestamp_ns(begin_timestamp);
     }
 
-    writer_->WriteQueueSubmission(submission_proto);
+    (*vulkan_layer_producer_)->EnqueueIntermediateEvent(std::move(capture_event));
   }
 
   timer_query_pool_->ResetQuerySlots(device, query_slots_to_reset);

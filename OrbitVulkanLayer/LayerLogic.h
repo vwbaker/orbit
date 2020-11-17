@@ -8,11 +8,11 @@
 #include "CommandBufferManager.h"
 #include "DispatchTable.h"
 #include "OrbitBase/Logging.h"
-#include "OrbitConnector.h"
+#include "OrbitService/ProducerSideUnixDomainSocketPath.h"
 #include "PhysicalDeviceManager.h"
 #include "QueueManager.h"
 #include "TimerQueryPool.h"
-#include "Writer.h"
+#include "VulkanLayerProducer.h"
 #include "vulkan/vulkan.h"
 
 namespace orbit_vulkan_layer {
@@ -35,14 +35,15 @@ namespace orbit_vulkan_layer {
 class LayerLogic {
  public:
   LayerLogic()
-      : physical_device_manager_(&dispatch_table_),
+      : vulkan_layer_producer_{std::nullopt},
+        physical_device_manager_(&dispatch_table_),
         timer_query_pool_(&dispatch_table_),
-        writer_("/mnt/developer/orbit_test_file"),
-        connector_(&writer_),
         command_buffer_manager_(&dispatch_table_, &timer_query_pool_, &physical_device_manager_,
-                                &writer_, &connector_) {
+                                &vulkan_layer_producer_) {
     LOG("LayerLogic");
   }
+
+  ~LayerLogic() { CloseVulkanLayerProducerIfNecessary(); }
 
   [[nodiscard]] VkResult PreCallAndCallCreateInstance(const VkInstanceCreateInfo* create_info,
                                                       const VkAllocationCallbacks* allocator,
@@ -67,6 +68,8 @@ class LayerLogic {
     dispatch_table_.RemoveInstanceDispatchTable(instance);
 
     destroy_instance_function(instance, allocator);
+
+    CloseVulkanLayerProducerIfNecessary();
   }
 
   void CallAndPostDestroyDevice(VkDevice device, const VkAllocationCallbacks* allocator) {
@@ -211,11 +214,32 @@ class LayerLogic {
   }
 
  private:
+  void InitVulkanLayerProducerIfNecessary() {
+    absl::MutexLock lock{&vulkan_layer_producer_mutex_};
+    if (!vulkan_layer_producer_.has_value()) {
+      vulkan_layer_producer_.emplace();
+      if (!vulkan_layer_producer_->BringUp(orbit_service::kProducerSideUnixDomainSocketPath)) {
+        vulkan_layer_producer_.reset();
+      }
+    }
+  }
+
+  void CloseVulkanLayerProducerIfNecessary() {
+    absl::MutexLock lock{&vulkan_layer_producer_mutex_};
+    if (vulkan_layer_producer_.has_value()) {
+      // TODO: Only do this when DestroyInstance has been called a number of times
+      //  equal to the number of times CreateInstance was called.
+      vulkan_layer_producer_->TakeDown();
+      vulkan_layer_producer_.reset();
+    }
+  }
+
+  std::optional<VulkanLayerProducer> vulkan_layer_producer_;
+  absl::Mutex vulkan_layer_producer_mutex_;
+
   DispatchTable dispatch_table_;
   PhysicalDeviceManager physical_device_manager_;
   TimerQueryPool timer_query_pool_;
-  Writer writer_;
-  OrbitConnector connector_;
   CommandBufferManager command_buffer_manager_;
   QueueManager queue_manager_;
 };

@@ -9,10 +9,9 @@
 
 #include "DispatchTable.h"
 #include "OrbitBase/Logging.h"
-#include "OrbitConnector.h"
 #include "PhysicalDeviceManager.h"
 #include "TimerQueryPool.h"
-#include "Writer.h"
+#include "VulkanLayerProducer.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
@@ -88,13 +87,12 @@ struct QueueSubmission {
 class CommandBufferManager {
  public:
   explicit CommandBufferManager(DispatchTable* dispatch_table, TimerQueryPool* timer_query_pool,
-                                PhysicalDeviceManager* physical_device_manager, Writer* writer,
-                                const OrbitConnector* connector)
+                                PhysicalDeviceManager* physical_device_manager,
+                                std::optional<VulkanLayerProducer>* vulkan_layer_producer)
       : dispatch_table_(dispatch_table),
         timer_query_pool_(timer_query_pool),
         physical_device_manager_(physical_device_manager),
-        writer_(writer),
-        connector_(connector) {}
+        vulkan_layer_producer_{vulkan_layer_producer} {}
   void TrackCommandBuffers(VkDevice device, VkCommandPool pool,
                            const VkCommandBuffer* command_buffers, uint32_t count);
   void UntrackCommandBuffers(VkDevice device, VkCommandPool pool,
@@ -140,9 +138,11 @@ class CommandBufferManager {
   DispatchTable* dispatch_table_;
   TimerQueryPool* timer_query_pool_;
   PhysicalDeviceManager* physical_device_manager_;
-  Writer* writer_;
 
-  const OrbitConnector* connector_;
+  [[nodiscard]] bool IsCapturing() {
+    return vulkan_layer_producer_->has_value() && (*vulkan_layer_producer_)->IsCapturing();
+  }
+  std::optional<VulkanLayerProducer>* vulkan_layer_producer_;
 };
 
 }  // namespace orbit_vulkan_layer

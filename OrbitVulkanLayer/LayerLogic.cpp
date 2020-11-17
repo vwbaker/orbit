@@ -12,6 +12,8 @@ VkResult LayerLogic::PreCallAndCallCreateInstance(const VkInstanceCreateInfo* cr
                                                   const VkAllocationCallbacks* allocator,
                                                   VkInstance* instance) {
   LOG("PreCallAndCallCreateInstance");
+  InitVulkanLayerProducerIfNecessary();
+
   auto* layer_create_info = absl::bit_cast<VkLayerInstanceCreateInfo*>(create_info->pNext);
 
   while (layer_create_info != nullptr &&
