@@ -75,8 +75,7 @@ VKAPI_ATTR VkResult VKAPI_CALL OrbitCreateInstance(const VkInstanceCreateInfo* c
 
 VKAPI_ATTR void VKAPI_CALL OrbitDestroyInstance(VkInstance instance,
                                                 const VkAllocationCallbacks* allocator) {
-  logic_.CallDestroyInstance(instance, allocator);
-  logic_.PostCallDestroyInstance(instance, allocator);
+  logic_.CallAndPostDestroyInstance(instance, allocator);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitCreateDevice(VkPhysicalDevice physical_device,
@@ -91,8 +90,7 @@ VKAPI_ATTR VkResult VKAPI_CALL OrbitCreateDevice(VkPhysicalDevice physical_devic
 
 VKAPI_ATTR void VKAPI_CALL OrbitDestroyDevice(VkDevice device,
                                               const VkAllocationCallbacks* allocator) {
-  logic_.CallDestroyDevice(device, allocator);
-  logic_.PostCallDestroyDevice(device, allocator);
+  logic_.CallAndPostDestroyDevice(device, allocator);
 }
 
 // ----------------------------------------------------------------------------

@@ -31,6 +31,7 @@ class DispatchTable {
   void CreateInstanceDispatchTable(
       const VkInstance& instance,
       const PFN_vkGetInstanceProcAddr& next_get_instance_proc_addr_function) {
+    LOG("CreateInstanceDispatchTable");
     VkLayerInstanceDispatchTable dispatch_table;
     dispatch_table.DestroyInstance = absl::bit_cast<PFN_vkDestroyInstance>(
         next_get_instance_proc_addr_function(instance, "vkDestroyInstance"));
@@ -53,13 +54,18 @@ class DispatchTable {
   }
 
   void RemoveInstanceDispatchTable(const VkInstance& instance) {
+    LOG("RemoveInstanceDispatchTable");
     absl::WriterMutexLock lock(&mutex_);
     instance_dispatch_table_.erase(GetDispatchTableKey(instance));
   }
 
   void CreateDeviceDispatchTable(const VkDevice& device,
                                  const PFN_vkGetDeviceProcAddr& next_get_device_proc_add_function) {
+    LOG("CreateDeviceDispatchTable");
     VkLayerDispatchTable dispatch_table;
+
+    dispatch_table.DestroyDevice = absl::bit_cast<PFN_vkDestroyDevice>(
+        next_get_device_proc_add_function(device, "vkDestroyDevice"));
 
     dispatch_table.GetDeviceProcAddr = absl::bit_cast<PFN_vkGetDeviceProcAddr>(
         next_get_device_proc_add_function(device, "vkGetDeviceProcAddr"));
@@ -156,6 +162,7 @@ class DispatchTable {
   }
 
   void RemoveDeviceDispatchTable(const VkDevice& device) {
+    LOG("RemoveDeviceDispatchTable");
     void* key = GetDispatchTableKey(device);
     absl::WriterMutexLock lock(&mutex_);
     device_dispatch_table_.erase(key);

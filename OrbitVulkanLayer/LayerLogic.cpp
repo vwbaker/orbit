@@ -47,12 +47,6 @@ void LayerLogic::PostCallCreateInstance(const VkInstanceCreateInfo* /*create_inf
   LOG("PostCallCreateInstance");
 }
 
-void LayerLogic::PostCallDestroyInstance(VkInstance instance,
-                                         const VkAllocationCallbacks* /*allocator*/) {
-  LOG("PostCallDestroyInstance");
-  dispatch_table_.RemoveInstanceDispatchTable(instance);
-}
-
 VkResult LayerLogic::PreCallAndCallCreateDevice(
     VkPhysicalDevice /*physical_device*/ physical_device, const VkDeviceCreateInfo* create_info,
     const VkAllocationCallbacks* allocator /*allocator*/, VkDevice* device) {
@@ -95,13 +89,6 @@ void LayerLogic::PostCallCreateDevice(VkPhysicalDevice physical_device,
   LOG("PostCallCreateDevice");
   physical_device_manager_.TrackPhysicalDevice(physical_device, *device);
   timer_query_pool_.InitializeTimerQueryPool(*device);
-}
-
-void LayerLogic::PostCallDestroyDevice(VkDevice device,
-                                       const VkAllocationCallbacks* /*allocator*/) {
-  LOG("PostCallDestroyDevice");
-  physical_device_manager_.UntrackLogicalDevice(device);
-  dispatch_table_.RemoveDeviceDispatchTable(device);
 }
 
 void LayerLogic::PostCallResetCommandPool(VkDevice /*device*/, VkCommandPool command_pool,

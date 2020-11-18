@@ -60,17 +60,24 @@ class LayerLogic {
     return dispatch_table_.GetInstanceProcAddr(instance)(instance, name);
   }
 
-  void CallDestroyInstance(VkInstance instance, const VkAllocationCallbacks* allocator) {
-    LOG("CallDestroyInstance");
-    dispatch_table_.DestroyInstance(instance)(instance, allocator);
-  }
-  void PostCallDestroyInstance(VkInstance instance, const VkAllocationCallbacks* allocator);
+  void CallAndPostDestroyInstance(VkInstance instance, const VkAllocationCallbacks* allocator) {
+    LOG("CallAndPostDestroyInstance");
+    PFN_vkDestroyInstance destroy_instance_function = dispatch_table_.DestroyInstance(instance);
+    CHECK(destroy_instance_function != nullptr);
+    dispatch_table_.RemoveInstanceDispatchTable(instance);
 
-  void CallDestroyDevice(VkDevice device, const VkAllocationCallbacks* allocator) {
-    LOG("CallDestroyDevice");
-    dispatch_table_.DestroyDevice(device)(device, allocator);
+    destroy_instance_function(instance, allocator);
   }
-  void PostCallDestroyDevice(VkDevice device, const VkAllocationCallbacks* allocator);
+
+  void CallAndPostDestroyDevice(VkDevice device, const VkAllocationCallbacks* allocator) {
+    LOG("CallAndPostDestroyDevice");
+    PFN_vkDestroyDevice destroy_device_function = dispatch_table_.DestroyDevice(device);
+    CHECK(destroy_device_function != nullptr);
+    physical_device_manager_.UntrackLogicalDevice(device);
+    dispatch_table_.RemoveDeviceDispatchTable(device);
+
+    destroy_device_function(device, allocator);
+  }
 
   [[nodiscard]] VkResult PreCallAndCallCreateDevice(VkPhysicalDevice physical_device,
                                                     const VkDeviceCreateInfo* create_info,
