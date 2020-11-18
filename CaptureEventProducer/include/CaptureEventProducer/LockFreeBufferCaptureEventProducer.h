@@ -57,7 +57,7 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
   std::atomic<bool> take_down_requested_ = false;
 
   void ForwarderThread() {
-    constexpr uint64_t kMaxEventsPerRequest = 75'000;
+    constexpr uint64_t kMaxEventsPerRequest = 10'000;
     std::vector<IntermediateEventT> dequeued_events;
     dequeued_events.resize(kMaxEventsPerRequest);
     while (!take_down_requested_) {
