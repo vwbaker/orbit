@@ -47,6 +47,7 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
     }
   }
 
+ protected:
   [[nodiscard]] virtual orbit_grpc_protos::CaptureEvent TranslateIntermediateEvent(
       IntermediateEventT&& intermediate_event) = 0;
 

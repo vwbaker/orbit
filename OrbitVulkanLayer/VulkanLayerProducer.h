@@ -15,14 +15,14 @@ class VulkanLayerProducer
   using Base = orbit_producer::LockFreeBufferCaptureEventProducer<orbit_grpc_protos::CaptureEvent>;
 
  public:
-  orbit_grpc_protos::CaptureEvent TranslateIntermediateEvent(
-      orbit_grpc_protos::CaptureEvent&& intermediate_event) override;
-
   uint64_t InternStringIfNecessaryAndGetKey(std::string str);
 
   void ClearStringInternPool();
 
  protected:
+  orbit_grpc_protos::CaptureEvent TranslateIntermediateEvent(
+      orbit_grpc_protos::CaptureEvent&& intermediate_event) override;
+
   void OnCaptureStart() override;
 
  private:
