@@ -21,6 +21,10 @@ class OrbitConnector {
   OrbitConnector(Writer* writer)
       : writer_(writer),
         checker_thread_(CheckIsCapturing, &exit_requested_, &is_capturing_, writer_) {}
+  ~OrbitConnector() {
+    exit_requested_ = true;
+    checker_thread_.join();
+  }
   [[nodiscard]] bool IsCapturing() const { return is_capturing_; }
 
  private:
