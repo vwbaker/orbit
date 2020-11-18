@@ -14,14 +14,10 @@ grpc::Status ProducerSideServiceImpl::SendCaptureEvents(
     ::grpc::ServerContext* /*context*/,
     const ::orbit_grpc_protos::SendCaptureEventsRequest* request,
     ::orbit_grpc_protos::SendCaptureEventsResponse* /*response*/) {
-  // TODO(dpallotti): Remove this LOG.
-  LOG("A producer sent %d events", request->capture_events_size());
-  {
-    absl::ReaderMutexLock lock{&buffer_mutex_};
-    if (capture_event_buffer_ != nullptr) {
-      for (orbit_grpc_protos::CaptureEvent event : request->capture_events()) {
-        capture_event_buffer_->AddEvent(std::move(event));
-      }
+  absl::ReaderMutexLock lock{&buffer_mutex_};
+  if (capture_event_buffer_ != nullptr) {
+    for (orbit_grpc_protos::CaptureEvent event : request->capture_events()) {
+      capture_event_buffer_->AddEvent(std::move(event));
     }
   }
   return grpc::Status::OK;
