@@ -6,10 +6,10 @@
 #define ORBIT_VULKAN_LAYER_LAYER_LOGIC_H_
 
 #include "CommandBufferManager.h"
+#include "DeviceManager.h"
 #include "DispatchTable.h"
 #include "OrbitBase/Logging.h"
 #include "OrbitService/ProducerSideUnixDomainSocketPath.h"
-#include "PhysicalDeviceManager.h"
 #include "QueueManager.h"
 #include "TimerQueryPool.h"
 #include "VulkanLayerProducer.h"
@@ -36,9 +36,9 @@ class LayerLogic {
  public:
   LayerLogic()
       : vulkan_layer_producer_{std::nullopt},
-        physical_device_manager_(&dispatch_table_),
+        device_manager_(&dispatch_table_),
         timer_query_pool_(&dispatch_table_),
-        command_buffer_manager_(&dispatch_table_, &timer_query_pool_, &physical_device_manager_,
+        command_buffer_manager_(&dispatch_table_, &timer_query_pool_, &device_manager_,
                                 &vulkan_layer_producer_) {
     LOG("LayerLogic");
   }
@@ -76,7 +76,7 @@ class LayerLogic {
     LOG("CallAndPostDestroyDevice");
     PFN_vkDestroyDevice destroy_device_function = dispatch_table_.DestroyDevice(device);
     CHECK(destroy_device_function != nullptr);
-    physical_device_manager_.UntrackLogicalDevice(device);
+    device_manager_.UntrackLogicalDevice(device);
     dispatch_table_.RemoveDeviceDispatchTable(device);
 
     destroy_device_function(device, allocator);
@@ -238,7 +238,7 @@ class LayerLogic {
   absl::Mutex vulkan_layer_producer_mutex_;
 
   DispatchTable dispatch_table_;
-  PhysicalDeviceManager<DispatchTable> physical_device_manager_;
+  DeviceManager<DispatchTable> device_manager_;
   TimerQueryPool timer_query_pool_;
   CommandBufferManager command_buffer_manager_;
   QueueManager queue_manager_;

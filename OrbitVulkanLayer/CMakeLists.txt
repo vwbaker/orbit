@@ -16,11 +16,11 @@ target_include_directories(OrbitVulkanLayer PRIVATE
 target_sources(OrbitVulkanLayer PRIVATE
         CommandBufferManager.cpp
         CommandBufferManager.h
+        DeviceManager.h
         DispatchTable.h
         Main.cpp
         LayerLogic.cpp
         LayerLogic.h
-        PhysicalDeviceManager.h
         QueueManager.cpp
         QueueManager.h
         TimerQueryPool.cpp
@@ -38,7 +38,7 @@ add_executable(OrbitVulkanLayerTests)
 target_compile_options(OrbitVulkanLayerTests PRIVATE ${STRICT_COMPILE_FLAGS})
 
 target_sources(OrbitVulkanLayerTests PRIVATE
-        PhysicalDeviceManagerTest.cpp
+        DeviceManagerTest.cpp
         QueueManagerTest.cpp)
 
 target_link_libraries(

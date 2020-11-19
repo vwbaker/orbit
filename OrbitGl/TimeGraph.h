@@ -8,7 +8,6 @@
 #include <unordered_map>
 #include <utility>
 
-#include "../Orbit.h"
 #include "AsyncTrack.h"
 #include "Batcher.h"
 #include "BlockChain.h"
@@ -18,6 +17,7 @@
 #include "GraphTrack.h"
 #include "ManualInstrumentationManager.h"
 #include "OrbitBase/Profiling.h"
+#include "OrbitBase/Tracing.h"
 #include "SchedulerTrack.h"
 #include "StringManager.h"
 #include "TextBox.h"
@@ -81,6 +81,8 @@ class TimeGraph {
                                 const orbit_client_protos::TimerInfo& timer_info,
                                 double distance = 0.3);
   void VerticallyMoveIntoView(const orbit_client_protos::TimerInfo& timer_info);
+  void VerticallyMoveIntoView(Track& track);
+
   [[nodiscard]] double GetTime(double ratio) const;
   void Select(const TextBox* text_box);
   enum class JumpScope { kGlobal, kSameDepth, kSameThread, kSameFunction, kSameThreadSameFunction };

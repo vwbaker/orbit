@@ -89,7 +89,7 @@ void LayerLogic::PostCallCreateDevice(VkPhysicalDevice physical_device,
                                       const VkAllocationCallbacks* /*allocator*/,
                                       VkDevice* device) {
   LOG("PostCallCreateDevice");
-  physical_device_manager_.TrackPhysicalDevice(physical_device, *device);
+  device_manager_.TrackLogicalDevice(physical_device, *device);
   timer_query_pool_.InitializeTimerQueryPool(*device);
 }
 

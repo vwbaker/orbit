@@ -7,9 +7,9 @@
 
 #include <stack>
 
+#include "DeviceManager.h"
 #include "DispatchTable.h"
 #include "OrbitBase/Logging.h"
-#include "PhysicalDeviceManager.h"
 #include "TimerQueryPool.h"
 #include "VulkanLayerProducer.h"
 #include "absl/container/flat_hash_map.h"
@@ -87,11 +87,11 @@ struct QueueSubmission {
 class CommandBufferManager {
  public:
   explicit CommandBufferManager(DispatchTable* dispatch_table, TimerQueryPool* timer_query_pool,
-                                PhysicalDeviceManager<DispatchTable>* physical_device_manager,
+                                DeviceManager<DispatchTable>* device_manager,
                                 std::optional<VulkanLayerProducer>* vulkan_layer_producer)
       : dispatch_table_(dispatch_table),
         timer_query_pool_(timer_query_pool),
-        physical_device_manager_(physical_device_manager),
+        device_manager_(device_manager),
         vulkan_layer_producer_{vulkan_layer_producer} {}
   void TrackCommandBuffers(VkDevice device, VkCommandPool pool,
                            const VkCommandBuffer* command_buffers, uint32_t count);
@@ -137,7 +137,7 @@ class CommandBufferManager {
 
   DispatchTable* dispatch_table_;
   TimerQueryPool* timer_query_pool_;
-  PhysicalDeviceManager<DispatchTable>* physical_device_manager_;
+  DeviceManager<DispatchTable>* device_manager_;
 
   [[nodiscard]] bool IsCapturing() {
     return vulkan_layer_producer_->has_value() && (*vulkan_layer_producer_)->IsCapturing();

@@ -260,10 +260,9 @@ void CommandBufferManager::CompleteSubmits(VkDevice device) {
     return;
   }
 
-  VkPhysicalDevice physical_device =
-      physical_device_manager_->GetPhysicalDeviceOfLogicalDevice(device);
+  VkPhysicalDevice physical_device = device_manager_->GetPhysicalDeviceOfLogicalDevice(device);
   const float timestamp_period =
-      physical_device_manager_->GetPhysicalDeviceProperties(physical_device).limits.timestampPeriod;
+      device_manager_->GetPhysicalDeviceProperties(physical_device).limits.timestampPeriod;
 
   std::vector<uint32_t> query_slots_to_reset;
   for (const auto& completed_submission : completed_submissions) {
