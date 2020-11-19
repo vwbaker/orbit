@@ -98,31 +98,31 @@ class CommandBufferManager {
   void UntrackCommandBuffers(VkDevice device, VkCommandPool pool,
                              const VkCommandBuffer* command_buffers, uint32_t count);
 
-  void MarkCommandBufferBegin(const VkCommandBuffer& command_buffer);
+  void MarkCommandBufferBegin(VkCommandBuffer command_buffer);
 
-  void MarkCommandBufferEnd(const VkCommandBuffer& command_buffer);
+  void MarkCommandBufferEnd(VkCommandBuffer command_buffer);
 
-  void MarkDebugMarkerBegin(const VkCommandBuffer& command_buffer, const char* text);
-  void MarkDebugMarkerEnd(const VkCommandBuffer& command_buffer);
+  void MarkDebugMarkerBegin(VkCommandBuffer command_buffer, const char* text);
+  void MarkDebugMarkerEnd(VkCommandBuffer command_buffer);
 
   void PersistSubmitInformation(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits);
-  void DoPostSubmitQueue(const VkQueue& queue, uint32_t submit_count, const VkSubmitInfo* submits);
+  void DoPostSubmitQueue(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits);
 
-  void CompleteSubmits(const VkDevice& device);
+  void CompleteSubmits(VkDevice device);
 
-  void ResetCommandBuffer(const VkCommandBuffer& command_buffer);
+  void ResetCommandBuffer(VkCommandBuffer command_buffer);
 
-  void ResetCommandPool(const VkCommandPool& command_pool);
+  void ResetCommandPool(VkCommandPool command_pool);
 
  private:
-  uint32_t RecordTimestamp(const VkCommandBuffer& command_buffer,
-                           const VkPipelineStageFlagBits& pipeline_stage_flags);
+  uint32_t RecordTimestamp(VkCommandBuffer command_buffer,
+                           VkPipelineStageFlagBits pipeline_stage_flags);
 
-  std::vector<internal::QueueSubmission> PullCompletedSubmissions(const VkDevice& device,
-                                                                  const VkQueryPool& query_pool);
+  std::vector<internal::QueueSubmission> PullCompletedSubmissions(VkDevice device,
+                                                                  VkQueryPool query_pool);
 
-  uint64_t QueryGpuTimestampNs(const VkDevice& device, const VkQueryPool& query_pool,
-                               uint32_t slot_index, float timestamp_period);
+  uint64_t QueryGpuTimestampNs(VkDevice device, VkQueryPool query_pool, uint32_t slot_index,
+                               float timestamp_period);
 
   static void WriteMetaInfo(const internal::SubmissionMetaInformation& meta_info,
                             orbit_grpc_protos::GpuQueueSubmissionMetaInfo* target_proto);

@@ -19,7 +19,7 @@ void CommandBufferManager::TrackCommandBuffers(VkDevice device, VkCommandPool po
   }
   absl::flat_hash_set<VkCommandBuffer>& associated_cbs = pool_to_command_buffers_.at(pool);
   for (uint32_t i = 0; i < count; ++i) {
-    const VkCommandBuffer& cb = command_buffers[i];
+    VkCommandBuffer cb = command_buffers[i];
     CHECK(cb != VK_NULL_HANDLE);
     associated_cbs.insert(cb);
     command_buffer_to_device_[cb] = device;
@@ -34,7 +34,7 @@ void CommandBufferManager::UntrackCommandBuffers(VkDevice device, VkCommandPool 
   absl::flat_hash_set<VkCommandBuffer>& associated_command_buffers =
       pool_to_command_buffers_.at(pool);
   for (uint32_t i = 0; i < count; ++i) {
-    const VkCommandBuffer& command_buffer = command_buffers[i];
+    VkCommandBuffer command_buffer = command_buffers[i];
     CHECK(command_buffer != VK_NULL_HANDLE);
     associated_command_buffers.erase(command_buffer);
     CHECK(command_buffer_to_device_.contains(command_buffer));
@@ -46,7 +46,7 @@ void CommandBufferManager::UntrackCommandBuffers(VkDevice device, VkCommandPool 
   }
 }
 
-void CommandBufferManager::MarkCommandBufferBegin(const VkCommandBuffer& command_buffer) {
+void CommandBufferManager::MarkCommandBufferBegin(VkCommandBuffer command_buffer) {
   LOG("MarkCommandBufferBegin");
   // Even when we are not capturing we create state for this command buffer to allow the
   // debug marker tracking.
@@ -67,7 +67,7 @@ void CommandBufferManager::MarkCommandBufferBegin(const VkCommandBuffer& command
   }
 }
 
-void CommandBufferManager::MarkCommandBufferEnd(const VkCommandBuffer& command_buffer) {
+void CommandBufferManager::MarkCommandBufferEnd(VkCommandBuffer command_buffer) {
   LOG("MarkCommandBufferEnd");
   if (!IsCapturing()) {
     return;
@@ -97,8 +97,7 @@ void CommandBufferManager::MarkCommandBufferEnd(const VkCommandBuffer& command_b
   }
 }
 
-void CommandBufferManager::MarkDebugMarkerBegin(const VkCommandBuffer& command_buffer,
-                                                const char* text) {
+void CommandBufferManager::MarkDebugMarkerBegin(VkCommandBuffer command_buffer, const char* text) {
   LOG("MarkDebugMarkerBegin");
   CHECK(text != nullptr);
   {
@@ -124,7 +123,7 @@ void CommandBufferManager::MarkDebugMarkerBegin(const VkCommandBuffer& command_b
   }
 }
 
-void CommandBufferManager::MarkDebugMarkerEnd(const VkCommandBuffer& command_buffer) {
+void CommandBufferManager::MarkDebugMarkerEnd(VkCommandBuffer command_buffer) {
   {
     absl::WriterMutexLock lock(&mutex_);
     CHECK(command_buffer_to_state_.contains(command_buffer));
@@ -161,12 +160,12 @@ void CommandBufferManager::PersistSubmitInformation(VkQueue queue, uint32_t subm
 
   absl::WriterMutexLock lock(&mutex_);
   for (uint32_t submit_index = 0; submit_index < submit_count; ++submit_index) {
-    const VkSubmitInfo& submit_info = submits[submit_index];
+    VkSubmitInfo submit_info = submits[submit_index];
     queue_submission.submit_infos.emplace_back();
     internal::SubmitInfo& submitted_submit_info = queue_submission.submit_infos.back();
     for (uint32_t command_buffer_index = 0; command_buffer_index < submit_info.commandBufferCount;
          ++command_buffer_index) {
-      const VkCommandBuffer& command_buffer = submit_info.pCommandBuffers[command_buffer_index];
+      VkCommandBuffer command_buffer = submit_info.pCommandBuffers[command_buffer_index];
       CHECK(command_buffer_to_state_.contains(command_buffer));
       internal::CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
       if (!state.command_buffer_begin_slot_index.has_value()) {
@@ -190,7 +189,7 @@ void CommandBufferManager::PersistSubmitInformation(VkQueue queue, uint32_t subm
 
 // Take a timestamp before and after the execution of the driver code for the submission.
 // This allows us to map submissions from the vulkan layer to the driver submissions.
-void CommandBufferManager::DoPostSubmitQueue(const VkQueue& queue, uint32_t submit_count,
+void CommandBufferManager::DoPostSubmitQueue(VkQueue queue, uint32_t submit_count,
                                              const VkSubmitInfo* submits) {
   LOG("PersistSubmitInformation");
   {
@@ -209,10 +208,10 @@ void CommandBufferManager::DoPostSubmitQueue(const VkQueue& queue, uint32_t subm
     }
 
     for (uint32_t submit_index = 0; submit_index < submit_count; ++submit_index) {
-      const VkSubmitInfo& submit_info = submits[submit_index];
+      VkSubmitInfo submit_info = submits[submit_index];
       for (uint32_t command_buffer_index = 0; command_buffer_index < submit_info.commandBufferCount;
            ++command_buffer_index) {
-        const VkCommandBuffer& command_buffer = submit_info.pCommandBuffers[command_buffer_index];
+        VkCommandBuffer command_buffer = submit_info.pCommandBuffers[command_buffer_index];
         CHECK(command_buffer_to_state_.contains(command_buffer));
         for (const internal::Marker& marker : command_buffer_to_state_.at(command_buffer).markers) {
           std::optional<internal::SubmittedMarker> submitted_marker = std::nullopt;
@@ -251,7 +250,7 @@ void CommandBufferManager::DoPostSubmitQueue(const VkQueue& queue, uint32_t subm
   }
 }
 
-void CommandBufferManager::CompleteSubmits(const VkDevice& device) {
+void CommandBufferManager::CompleteSubmits(VkDevice device) {
   LOG("CompleteSubmits");
   VkQueryPool query_pool = timer_query_pool_->GetQueryPool(device);
   std::vector<internal::QueueSubmission> completed_submissions =
@@ -261,7 +260,7 @@ void CommandBufferManager::CompleteSubmits(const VkDevice& device) {
     return;
   }
 
-  const VkPhysicalDevice& physical_device =
+  VkPhysicalDevice physical_device =
       physical_device_manager_->GetPhysicalDeviceOfLogicalDevice(device);
   const float timestamp_period =
       physical_device_manager_->GetPhysicalDeviceProperties(physical_device).limits.timestampPeriod;
@@ -329,7 +328,7 @@ void CommandBufferManager::CompleteSubmits(const VkDevice& device) {
 }
 
 std::vector<internal::QueueSubmission> CommandBufferManager::PullCompletedSubmissions(
-    const VkDevice& device, const VkQueryPool& query_pool) {
+    VkDevice device, VkQueryPool query_pool) {
   std::vector<internal::QueueSubmission> completed_submissions;
 
   absl::WriterMutexLock lock(&mutex_);
@@ -387,14 +386,14 @@ std::vector<internal::QueueSubmission> CommandBufferManager::PullCompletedSubmis
   return completed_submissions;
 }
 
-void CommandBufferManager::ResetCommandBuffer(const VkCommandBuffer& command_buffer) {
+void CommandBufferManager::ResetCommandBuffer(VkCommandBuffer command_buffer) {
   LOG("ResetCommandBuffer");
   absl::WriterMutexLock lock(&mutex_);
   if (!command_buffer_to_state_.contains(command_buffer)) {
     return;
   }
   internal::CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
-  const VkDevice& device = command_buffer_to_device_.at(command_buffer);
+  VkDevice device = command_buffer_to_device_.at(command_buffer);
   std::vector<uint32_t> marker_slots_to_rollback;
   if (state.command_buffer_begin_slot_index.has_value()) {
     marker_slots_to_rollback.push_back(state.command_buffer_begin_slot_index.value());
@@ -407,7 +406,7 @@ void CommandBufferManager::ResetCommandBuffer(const VkCommandBuffer& command_buf
   command_buffer_to_state_.erase(command_buffer);
 }
 
-void CommandBufferManager::ResetCommandPool(const VkCommandPool& command_pool) {
+void CommandBufferManager::ResetCommandPool(VkCommandPool command_pool) {
   LOG("ResetCommandPool");
   absl::flat_hash_set<VkCommandBuffer> command_buffers;
   {
@@ -422,8 +421,8 @@ void CommandBufferManager::ResetCommandPool(const VkCommandPool& command_pool) {
   }
 }
 
-uint32_t CommandBufferManager::RecordTimestamp(
-    const VkCommandBuffer& command_buffer, const VkPipelineStageFlagBits& pipeline_stage_flags) {
+uint32_t CommandBufferManager::RecordTimestamp(VkCommandBuffer command_buffer,
+                                               VkPipelineStageFlagBits pipeline_stage_flags) {
   LOG("RecordTimestamp");
   VkDevice device;
   {
@@ -443,8 +442,7 @@ uint32_t CommandBufferManager::RecordTimestamp(
   return slot_index;
 }
 
-uint64_t CommandBufferManager::QueryGpuTimestampNs(const VkDevice& device,
-                                                   const VkQueryPool& query_pool,
+uint64_t CommandBufferManager::QueryGpuTimestampNs(VkDevice device, VkQueryPool query_pool,
                                                    uint32_t slot_index, float timestamp_period) {
   LOG("QueryGpuTimestampNs");
   static constexpr VkDeviceSize kResultStride = sizeof(uint64_t);

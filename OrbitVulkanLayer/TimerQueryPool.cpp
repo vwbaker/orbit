@@ -9,7 +9,7 @@
 #include "OrbitBase/Profiling.h"
 
 namespace orbit_vulkan_layer {
-void orbit_vulkan_layer::TimerQueryPool::InitializeTimerQueryPool(const VkDevice& device) {
+void orbit_vulkan_layer::TimerQueryPool::InitializeTimerQueryPool(VkDevice device) {
   LOG("InitializeTimerQueryPool");
   VkQueryPool query_pool;
 
@@ -37,14 +37,14 @@ void orbit_vulkan_layer::TimerQueryPool::InitializeTimerQueryPool(const VkDevice
   }
 }
 
-VkQueryPool TimerQueryPool::GetQueryPool(const VkDevice& device) {
+VkQueryPool TimerQueryPool::GetQueryPool(VkDevice device) {
   LOG("GetQueryPool");
   absl::ReaderMutexLock lock(&mutex_);
   CHECK(device_to_query_pool_.contains(device));
   return device_to_query_pool_.at(device);
 }
 
-bool TimerQueryPool::NextReadyQuerySlot(const VkDevice& device, uint32_t* allocated_index) {
+bool TimerQueryPool::NextReadyQuerySlot(VkDevice device, uint32_t* allocated_index) {
   LOG("NextReadyQuerySlot");
   absl::WriterMutexLock lock(&mutex_);
   CHECK(device_to_potential_next_free_index_.contains(device));
@@ -66,7 +66,7 @@ bool TimerQueryPool::NextReadyQuerySlot(const VkDevice& device, uint32_t* alloca
   return false;
 }
 
-void TimerQueryPool::ResetQuerySlots(const VkDevice& device,
+void TimerQueryPool::ResetQuerySlots(VkDevice device,
                                      const std::vector<uint32_t>& physical_slot_indices) {
   if (physical_slot_indices.empty()) {
     return;
@@ -79,13 +79,13 @@ void TimerQueryPool::ResetQuerySlots(const VkDevice& device,
     CHECK(physical_slot_index < kNumPhysicalTimerQuerySlots);
     const SlotState& current_state = slot_states.at(physical_slot_index);
     CHECK(current_state == kQueryPendingOnGPU);
-    const VkQueryPool& query_pool = device_to_query_pool_.at(device);
+    VkQueryPool query_pool = device_to_query_pool_.at(device);
     dispatch_table_->ResetQueryPoolEXT(device)(device, query_pool, physical_slot_index, 1);
     slot_states.at(physical_slot_index) = kReadyForQueryIssue;
   }
 }
 
-void TimerQueryPool::RollbackPendingQuerySlots(const VkDevice& device,
+void TimerQueryPool::RollbackPendingQuerySlots(VkDevice device,
                                                const std::vector<uint32_t>& physical_slot_indices) {
   if (physical_slot_indices.empty()) {
     return;

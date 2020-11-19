@@ -15,13 +15,13 @@ namespace orbit_vulkan_layer {
 class TimerQueryPool {
  public:
   explicit TimerQueryPool(DispatchTable* dispatch_table) : dispatch_table_(dispatch_table) {}
-  void InitializeTimerQueryPool(const VkDevice& device);
-  [[nodiscard]] VkQueryPool GetQueryPool(const VkDevice& device);
-  [[nodiscard]] bool NextReadyQuerySlot(const VkDevice& device, uint32_t* allocated_index);
+  void InitializeTimerQueryPool(VkDevice device);
+  [[nodiscard]] VkQueryPool GetQueryPool(VkDevice device);
+  [[nodiscard]] bool NextReadyQuerySlot(VkDevice device, uint32_t* allocated_index);
 
-  void ResetQuerySlots(const VkDevice& device, const std::vector<uint32_t>& physical_slot_indices);
+  void ResetQuerySlots(VkDevice device, const std::vector<uint32_t>& physical_slot_indices);
 
-  void RollbackPendingQuerySlots(const VkDevice& device,
+  void RollbackPendingQuerySlots(VkDevice device,
                                  const std::vector<uint32_t>& physical_slot_indices);
 
  private:

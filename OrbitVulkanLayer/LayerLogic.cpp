@@ -103,7 +103,7 @@ void LayerLogic::PostCallAllocateCommandBuffers(VkDevice device,
                                                 const VkCommandBufferAllocateInfo* allocate_info,
                                                 VkCommandBuffer* command_buffers) {
   LOG("PostCallAllocateCommandBuffers");
-  const VkCommandPool& pool = allocate_info->commandPool;
+  VkCommandPool pool = allocate_info->commandPool;
   const uint32_t command_buffer_count = allocate_info->commandBufferCount;
   command_buffer_manager_.TrackCommandBuffers(device, pool, command_buffers, command_buffer_count);
 }
