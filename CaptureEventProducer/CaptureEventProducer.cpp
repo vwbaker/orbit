@@ -8,22 +8,14 @@
 #include "grpcpp/grpcpp.h"
 
 using orbit_grpc_protos::ProducerSideService;
-using orbit_grpc_protos::ReceiveCommandsRequest;
-using orbit_grpc_protos::ReceiveCommandsResponse;
-using orbit_grpc_protos::SendCaptureEventsRequest;
-using orbit_grpc_protos::SendCaptureEventsResponse;
+using orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest;
+using orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse;
 
 namespace orbit_producer {
 
 CaptureEventProducer::~CaptureEventProducer() = default;
 
 bool CaptureEventProducer::ConnectAndStart(std::string_view unix_domain_socket_path) {
-  CHECK(producer_side_service_stub_ == nullptr);
-  {
-    absl::ReaderMutexLock lock{&shutdown_requested_mutex_};
-    CHECK(!shutdown_requested_);
-  }
-
   std::string server_address = absl::StrFormat("unix://%s", unix_domain_socket_path);
   std::shared_ptr<grpc::Channel> channel = grpc::CreateCustomChannel(
       server_address, grpc::InsecureChannelCredentials(), grpc::ChannelArguments{});
@@ -38,32 +30,40 @@ bool CaptureEventProducer::ConnectAndStart(std::string_view unix_domain_socket_p
     return false;
   }
 
-  receive_commands_thread_ = std::thread{[this] { ReceiveCommandsThread(); }};
+  connect_and_receive_commands_thread_ = std::thread{[this] { ConnectAndReceiveCommandsThread(); }};
   return true;
 }
 
 void CaptureEventProducer::ShutdownAndWait() {
-  CHECK(producer_side_service_stub_ != nullptr);
-
   {
-    absl::MutexLock lock{&shutdown_requested_mutex_};
+    absl::WriterMutexLock lock{&shutdown_requested_mutex_};
     CHECK(!shutdown_requested_);
     shutdown_requested_ = true;
   }
+
   {
-    absl::MutexLock lock{&receive_commands_context_mutex_};
-    CHECK(receive_commands_context_ != nullptr);
-    receive_commands_context_->TryCancel();
+    absl::ReaderMutexLock lock{&context_and_stream_mutex_};
+    if (context_ != nullptr) {
+      LOG("Attempting to disconnect from ProducerSideService as exit was requested");
+      context_->TryCancel();
+    }
   }
 
-  CHECK(receive_commands_thread_.joinable());
-  receive_commands_thread_.join();
+  CHECK(connect_and_receive_commands_thread_.joinable());
+  connect_and_receive_commands_thread_.join();
 
   producer_side_service_stub_ = nullptr;
 }
 
+void CaptureEventProducer::OnCaptureStart() { LOG("CaptureEventProducer called OnCaptureStart"); }
+
+void CaptureEventProducer::OnCaptureStop() { LOG("CaptureEventProducer called OnCaptureStop"); }
+
 bool CaptureEventProducer::SendCaptureEvents(
-    const SendCaptureEventsRequest& send_capture_events_request) {
+    const orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest& send_events_request) {
+  CHECK(send_events_request.event_case() ==
+        orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest::kCaptureEvents);
+
   CHECK(producer_side_service_stub_ != nullptr);
   {
     // Acquiring the mutex just for the CHECK might seem expensive,
@@ -72,28 +72,50 @@ bool CaptureEventProducer::SendCaptureEvents(
     CHECK(!shutdown_requested_);
   }
 
-  grpc::ClientContext send_capture_events_context;
-  SendCaptureEventsResponse send_capture_events_response;
-  grpc::Status status = producer_side_service_stub_->SendCaptureEvents(
-      &send_capture_events_context, send_capture_events_request, &send_capture_events_response);
-  if (!status.ok()) {
-    ERROR("Sending CaptureEvents from CaptureEventProducer: %s", status.error_message());
-    return false;
+  bool write_succeeded;
+  {
+    absl::ReaderMutexLock lock{&context_and_stream_mutex_};
+    if (stream_ == nullptr) {
+      ERROR("Sending BufferedCaptureEvents to ProducerSideService: not connected");
+      return false;
+    }
+    write_succeeded = stream_->Write(send_events_request);
   }
-  return true;
+  if (!write_succeeded) {
+    ERROR("Sending BufferedCaptureEvents to ProducerSideService");
+  }
+  return write_succeeded;
 }
 
-void CaptureEventProducer::OnCaptureStart() { LOG("CaptureEventProducer called OnCaptureStart"); }
-
-void CaptureEventProducer::OnCaptureStop() { LOG("CaptureEventProducer called OnCaptureStop"); }
-
-void CaptureEventProducer::ReceiveCommandsThread() {
+bool CaptureEventProducer::NotifyAllEventsSent() {
   CHECK(producer_side_service_stub_ != nullptr);
   {
     absl::ReaderMutexLock lock{&shutdown_requested_mutex_};
     CHECK(!shutdown_requested_);
   }
-  constexpr absl::Duration kRetryConnectingDelay = absl::Seconds(5);
+
+  orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest all_events_sent_request;
+  all_events_sent_request.mutable_all_events_sent();
+  bool write_succeeded;
+  {
+    absl::ReaderMutexLock lock{&context_and_stream_mutex_};
+    if (stream_ == nullptr) {
+      ERROR("Sending AllEventsSent to ProducerSideService: not connected");
+      return false;
+    }
+    write_succeeded = stream_->Write(all_events_sent_request);
+  }
+  if (write_succeeded) {
+    LOG("Sent AllEventsSent to ProducerSideService");
+  } else {
+    ERROR("Sending AllEventsSent to ProducerSideService");
+  }
+  return write_succeeded;
+}
+
+void CaptureEventProducer::ConnectAndReceiveCommandsThread() {
+  CHECK(producer_side_service_stub_ != nullptr);
+  static constexpr absl::Duration kRetryConnectingDelay = absl::Seconds(5);
 
   while (true) {
     {
@@ -103,19 +125,18 @@ void CaptureEventProducer::ReceiveCommandsThread() {
       }
     }
 
-    std::unique_ptr<grpc::ClientReader<ReceiveCommandsResponse>> reader;
+    // Attempt to connect to ProducerSideService. Note that getting a stream_ != nullptr doesn't
+    // mean that the service is listening nor that the connection is actually established.
     {
-      absl::MutexLock lock{&receive_commands_context_mutex_};
-      receive_commands_context_ = std::make_unique<grpc::ClientContext>();
-      ReceiveCommandsRequest receive_commands_request;
-      reader = producer_side_service_stub_->ReceiveCommands(receive_commands_context_.get(),
-                                                            receive_commands_request);
+      absl::ReaderMutexLock lock{&context_and_stream_mutex_};
+      context_ = std::make_unique<grpc::ClientContext>();
+      stream_ = producer_side_service_stub_->ReceiveCommandsAndSendEvents(context_.get());
     }
 
-    if (reader == nullptr) {
+    if (stream_ == nullptr) {
       ERROR(
-          "Establishing gRPC connection for CaptureEventProducer to receive "
-          "ReceiveCommandsResponses");
+          "Calling ReceiveCommandsAndSendEvents to establish "
+          "gRPC connection with ProducerSideService");
       // This is the reason why we protect shutdown_requested_ with a Mutex
       // instead of using an std::atomic<bool>: so that we can use LockWhenWithTimeout.
       shutdown_requested_mutex_.ReaderLockWhenWithTimeout(
@@ -125,24 +146,29 @@ void CaptureEventProducer::ReceiveCommandsThread() {
       shutdown_requested_mutex_.Unlock();
       continue;
     }
-    LOG("CaptureEventProducer ready to receive ReceiveCommandsResponses");
+    LOG("Called ReceiveCommandsAndSendEvents on ProducerSideService");
 
-    ReceiveCommandsResponse receive_commands_response;
     while (true) {
+      ReceiveCommandsAndSendEventsResponse response;
+      bool read_succeeded;
       {
-        absl::ReaderMutexLock lock{&shutdown_requested_mutex_};
-        if (shutdown_requested_) {
-          break;
-        }
+        absl::ReaderMutexLock lock{&context_and_stream_mutex_};
+        read_succeeded = stream_->Read(&response);
       }
-
-      if (!reader->Read(&receive_commands_response)) {
-        ERROR("Receiving ReceiveCommandsResponse for CaptureEventProducer");
+      if (!read_succeeded) {
+        ERROR("Receiving ReceiveCommandsAndSendEventsResponse from ProducerSideService");
         if (is_capturing_) {
-          OnCaptureStop();
           is_capturing_ = false;
+          OnCaptureStop();
         }
-        reader->Finish();
+        LOG("Terminating call to ReceiveCommandsAndSendEvents");
+        {
+          absl::WriterMutexLock lock{&context_and_stream_mutex_};
+          stream_->Finish();
+          context_ = nullptr;
+          stream_ = nullptr;
+        }
+
         shutdown_requested_mutex_.ReaderLockWhenWithTimeout(
             absl::Condition(
                 +[](bool* shutdown_requested) { return *shutdown_requested; },
@@ -152,33 +178,27 @@ void CaptureEventProducer::ReceiveCommandsThread() {
         break;
       }
 
-      switch (receive_commands_response.command_case()) {
-        case ReceiveCommandsResponse::kCheckAliveCommand: {
-          LOG("CaptureEventProducer received CheckAliveCommand");
-        } break;
-        case ReceiveCommandsResponse::kStartCaptureCommand: {
-          LOG("CaptureEventProducer received StartCaptureCommand");
+      switch (response.command_case()) {
+        case ReceiveCommandsAndSendEventsResponse::kStartCaptureCommand: {
+          LOG("ProducerSideService sent StartCaptureCommand");
           if (!is_capturing_) {
-            OnCaptureStart();
             is_capturing_ = true;
+            OnCaptureStart();
           }
         } break;
-        case ReceiveCommandsResponse::kStopCaptureCommand: {
-          LOG("CaptureEventProducer received StopCaptureCommand");
+
+        case ReceiveCommandsAndSendEventsResponse::kStopCaptureCommand: {
+          LOG("ProducerSideService sent StopCaptureCommand");
           if (is_capturing_) {
-            OnCaptureStop();
             is_capturing_ = false;
+            OnCaptureStop();
           }
         } break;
-        case ReceiveCommandsResponse::COMMAND_NOT_SET: {
-          ERROR("CaptureEventProducer received COMMAND_NOT_SET");
+
+        case ReceiveCommandsAndSendEventsResponse::COMMAND_NOT_SET: {
+          ERROR("ProducerSideService sent COMMAND_NOT_SET");
         } break;
       }
-    }
-
-    {
-      absl::MutexLock lock{&receive_commands_context_mutex_};
-      receive_commands_context_ = nullptr;
     }
   }
 }

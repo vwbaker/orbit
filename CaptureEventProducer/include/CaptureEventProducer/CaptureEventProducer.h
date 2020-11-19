@@ -23,26 +23,30 @@ class CaptureEventProducer {
   [[nodiscard]] bool ConnectAndStart(std::string_view unix_domain_socket_path);
   void ShutdownAndWait();
 
-  [[nodiscard]] bool SendCaptureEvents(
-      const orbit_grpc_protos::SendCaptureEventsRequest& send_capture_events_request);
-
   virtual void OnCaptureStart();
   virtual void OnCaptureStop();
 
+  [[nodiscard]] bool SendCaptureEvents(
+      const orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest& send_events_request);
+  [[nodiscard]] bool NotifyAllEventsSent();
+
  private:
-  void ReceiveCommandsThread();
+  void ConnectAndReceiveCommandsThread();
 
  private:
   std::unique_ptr<orbit_grpc_protos::ProducerSideService::Stub> producer_side_service_stub_;
-  std::thread receive_commands_thread_;
+  std::thread connect_and_receive_commands_thread_;
+
+  std::unique_ptr<grpc::ClientContext> context_;
+  std::unique_ptr<grpc::ClientReaderWriter<orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest,
+                                           orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse>>
+      stream_;
+  absl::Mutex context_and_stream_mutex_;
+
+  std::atomic<bool> is_capturing_ = false;
 
   bool shutdown_requested_ = false;
   absl::Mutex shutdown_requested_mutex_;
-
-  std::unique_ptr<grpc::ClientContext> receive_commands_context_;
-  absl::Mutex receive_commands_context_mutex_;
-
-  std::atomic<bool> is_capturing_ = false;
 };
 
 }  // namespace orbit_producer

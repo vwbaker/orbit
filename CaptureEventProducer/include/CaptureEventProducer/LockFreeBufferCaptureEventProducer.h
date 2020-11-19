@@ -15,7 +15,7 @@ template <typename IntermediateEventT>
 class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
  public:
   [[nodiscard]] bool BringUp(std::string_view unix_domain_socket_path) {
-    if (!CaptureEventProducer::ConnectAndStart(unix_domain_socket_path)) {
+    if (!ConnectAndStart(unix_domain_socket_path)) {
       return false;
     }
 
@@ -29,7 +29,7 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
     CHECK(forwarder_thread_.joinable());
     forwarder_thread_.join();
 
-    CaptureEventProducer::ShutdownAndWait();
+    ShutdownAndWait();
   }
 
   void EnqueueIntermediateEvent(const IntermediateEventT& event) {
@@ -48,6 +48,22 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
   }
 
  protected:
+  void OnCaptureStart() override {
+    CaptureEventProducer::OnCaptureStart();
+    {
+      absl::MutexLock lock{&should_send_all_events_sent_mutex_};
+      should_send_all_events_sent_ = false;
+    }
+  }
+
+  void OnCaptureStop() override {
+    CaptureEventProducer::OnCaptureStop();
+    {
+      absl::MutexLock lock{&should_send_all_events_sent_mutex_};
+      should_send_all_events_sent_ = true;
+    }
+  }
+
   [[nodiscard]] virtual orbit_grpc_protos::CaptureEvent TranslateIntermediateEvent(
       IntermediateEventT&& intermediate_event) = 0;
 
@@ -60,16 +76,13 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
       size_t dequeued_event_count;
       while ((dequeued_event_count = lock_free_queue_.try_dequeue_bulk(dequeued_events.begin(),
                                                                        kMaxEventsPerRequest)) > 0) {
-        CHECK(dequeued_events.size() == kMaxEventsPerRequest);
-
-        orbit_grpc_protos::SendCaptureEventsRequest send_request;
+        orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest send_request;
+        auto* capture_events = send_request.mutable_capture_events()->mutable_capture_events();
         for (size_t i = 0; i < dequeued_event_count; ++i) {
-          orbit_grpc_protos::CaptureEvent* event = send_request.mutable_capture_events()->Add();
+          orbit_grpc_protos::CaptureEvent* event = capture_events->Add();
           *event = TranslateIntermediateEvent(std::move(dequeued_events[i]));
         }
 
-        grpc::ClientContext send_message_context;
-        orbit_grpc_protos::SendCaptureEventsResponse send_response;
         if (!SendCaptureEvents(send_request)) {
           ERROR("Forwarding %lu CaptureEvents", dequeued_event_count);
           break;
@@ -79,14 +92,34 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
         }
       }
 
+      // lock_free_queue_ is now empty: check if we need to send AllEventsSent.
+      {
+        should_send_all_events_sent_mutex_.Lock();
+        if (should_send_all_events_sent_) {
+          should_send_all_events_sent_ = false;
+          should_send_all_events_sent_mutex_.Unlock();
+          if (!NotifyAllEventsSent()) {
+            ERROR("Notifying that all CaptureEvents have been sent");
+            break;
+          }
+          continue;
+        }
+        should_send_all_events_sent_mutex_.Unlock();
+      }
+
+      // Wait for lock_free_queue_ to fill up with new CaptureEvents.
       std::this_thread::sleep_for(std::chrono::microseconds{100});
     }
   }
 
  private:
   moodycamel::ConcurrentQueue<IntermediateEventT> lock_free_queue_;
+
   std::thread forwarder_thread_;
   std::atomic<bool> take_down_requested_ = false;
+
+  bool should_send_all_events_sent_ = false;
+  absl::Mutex should_send_all_events_sent_mutex_;
 };
 
 }  // namespace orbit_producer
