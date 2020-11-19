@@ -58,7 +58,7 @@ grpc::Status ProducerSideServiceImpl::ReceiveCommands(
           ERROR("Sending StopCaptureCommand to producer");
           return grpc::Status::CANCELLED;
         }
-        LOG("Sent StartCaptureCommand to producer");
+        LOG("Sent StopCaptureCommand to producer");
       }
       continue;
     }
