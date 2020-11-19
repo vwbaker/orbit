@@ -14,29 +14,34 @@ namespace orbit_producer {
 
 class CaptureEventProducer {
  public:
-  virtual ~CaptureEventProducer() = default;
-
-  [[nodiscard]] bool SendCaptureEvents(
-      const orbit_grpc_protos::SendCaptureEventsRequest& send_capture_events_request);
-
-  [[nodiscard]] bool ConnectAndStart(std::string_view unix_domain_socket_path);
-  void ShutdownAndWait();
+  // Pure virtual destructor, but still with definition (in .cpp file), makes this class abstract.
+  virtual ~CaptureEventProducer() = 0;
 
   [[nodiscard]] bool IsCapturing() { return is_capturing_; }
 
  protected:
+  [[nodiscard]] bool ConnectAndStart(std::string_view unix_domain_socket_path);
+  void ShutdownAndWait();
+
+  [[nodiscard]] bool SendCaptureEvents(
+      const orbit_grpc_protos::SendCaptureEventsRequest& send_capture_events_request);
+
   virtual void OnCaptureStart();
   virtual void OnCaptureStop();
 
  private:
   void ReceiveCommandsThread();
 
+ private:
   std::unique_ptr<orbit_grpc_protos::ProducerSideService::Stub> producer_side_service_stub_;
   std::thread receive_commands_thread_;
+
   bool shutdown_requested_ = false;
   absl::Mutex shutdown_requested_mutex_;
+
   std::unique_ptr<grpc::ClientContext> receive_commands_context_;
   absl::Mutex receive_commands_context_mutex_;
+
   std::atomic<bool> is_capturing_ = false;
 };
 

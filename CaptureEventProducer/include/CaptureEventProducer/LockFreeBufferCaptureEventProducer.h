@@ -52,10 +52,6 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
       IntermediateEventT&& intermediate_event) = 0;
 
  private:
-  moodycamel::ConcurrentQueue<IntermediateEventT> lock_free_queue_;
-  std::thread forwarder_thread_;
-  std::atomic<bool> take_down_requested_ = false;
-
   void ForwarderThread() {
     constexpr uint64_t kMaxEventsPerRequest = 10'000;
     std::vector<IntermediateEventT> dequeued_events;
@@ -86,6 +82,11 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
       std::this_thread::sleep_for(std::chrono::microseconds{100});
     }
   }
+
+ private:
+  moodycamel::ConcurrentQueue<IntermediateEventT> lock_free_queue_;
+  std::thread forwarder_thread_;
+  std::atomic<bool> take_down_requested_ = false;
 };
 
 }  // namespace orbit_producer

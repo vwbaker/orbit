@@ -15,26 +15,7 @@ using orbit_grpc_protos::SendCaptureEventsResponse;
 
 namespace orbit_producer {
 
-bool CaptureEventProducer::SendCaptureEvents(
-    const SendCaptureEventsRequest& send_capture_events_request) {
-  CHECK(producer_side_service_stub_ != nullptr);
-  {
-    // Acquiring the mutex just for the CHECK might seem expensive,
-    // but the gRPC call that follows is orders of magnitude slower.
-    absl::ReaderMutexLock lock{&shutdown_requested_mutex_};
-    CHECK(!shutdown_requested_);
-  }
-
-  grpc::ClientContext send_capture_events_context;
-  SendCaptureEventsResponse send_capture_events_response;
-  grpc::Status status = producer_side_service_stub_->SendCaptureEvents(
-      &send_capture_events_context, send_capture_events_request, &send_capture_events_response);
-  if (!status.ok()) {
-    ERROR("Sending CaptureEvents from CaptureEventProducer: %s", status.error_message());
-    return false;
-  }
-  return true;
-}
+CaptureEventProducer::~CaptureEventProducer() = default;
 
 bool CaptureEventProducer::ConnectAndStart(std::string_view unix_domain_socket_path) {
   CHECK(producer_side_service_stub_ == nullptr);
@@ -79,6 +60,27 @@ void CaptureEventProducer::ShutdownAndWait() {
   receive_commands_thread_.join();
 
   producer_side_service_stub_ = nullptr;
+}
+
+bool CaptureEventProducer::SendCaptureEvents(
+    const SendCaptureEventsRequest& send_capture_events_request) {
+  CHECK(producer_side_service_stub_ != nullptr);
+  {
+    // Acquiring the mutex just for the CHECK might seem expensive,
+    // but the gRPC call that follows is orders of magnitude slower.
+    absl::ReaderMutexLock lock{&shutdown_requested_mutex_};
+    CHECK(!shutdown_requested_);
+  }
+
+  grpc::ClientContext send_capture_events_context;
+  SendCaptureEventsResponse send_capture_events_response;
+  grpc::Status status = producer_side_service_stub_->SendCaptureEvents(
+      &send_capture_events_context, send_capture_events_request, &send_capture_events_response);
+  if (!status.ok()) {
+    ERROR("Sending CaptureEvents from CaptureEventProducer: %s", status.error_message());
+    return false;
+  }
+  return true;
 }
 
 void CaptureEventProducer::OnCaptureStart() { LOG("CaptureEventProducer called OnCaptureStart"); }
