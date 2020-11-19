@@ -86,7 +86,8 @@ struct QueueSubmission {
  */
 class CommandBufferManager {
  public:
-  explicit CommandBufferManager(DispatchTable* dispatch_table, TimerQueryPool* timer_query_pool,
+  explicit CommandBufferManager(DispatchTable* dispatch_table,
+                                TimerQueryPool<DispatchTable>* timer_query_pool,
                                 DeviceManager<DispatchTable>* device_manager,
                                 std::optional<VulkanLayerProducer>* vulkan_layer_producer)
       : dispatch_table_(dispatch_table),
@@ -136,7 +137,7 @@ class CommandBufferManager {
   absl::flat_hash_map<VkQueue, internal::QueueMarkerState> queue_to_markers_;
 
   DispatchTable* dispatch_table_;
-  TimerQueryPool* timer_query_pool_;
+  TimerQueryPool<DispatchTable>* timer_query_pool_;
   DeviceManager<DispatchTable>* device_manager_;
 
   [[nodiscard]] bool IsCapturing() {

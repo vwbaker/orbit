@@ -37,7 +37,7 @@ class LayerLogic {
   LayerLogic()
       : vulkan_layer_producer_{std::nullopt},
         device_manager_(&dispatch_table_),
-        timer_query_pool_(&dispatch_table_),
+        timer_query_pool_(&dispatch_table_, kNumTimerQuerySlots),
         command_buffer_manager_(&dispatch_table_, &timer_query_pool_, &device_manager_,
                                 &vulkan_layer_producer_) {
     LOG("LayerLogic");
@@ -239,9 +239,11 @@ class LayerLogic {
 
   DispatchTable dispatch_table_;
   DeviceManager<DispatchTable> device_manager_;
-  TimerQueryPool timer_query_pool_;
+  TimerQueryPool<DispatchTable> timer_query_pool_;
   CommandBufferManager command_buffer_manager_;
   QueueManager queue_manager_;
+
+  static constexpr uint32_t kNumTimerQuerySlots = 65536;
 };
 
 }  // namespace orbit_vulkan_layer

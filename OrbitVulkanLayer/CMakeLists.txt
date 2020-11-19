@@ -23,7 +23,6 @@ target_sources(OrbitVulkanLayer PRIVATE
         LayerLogic.h
         QueueManager.cpp
         QueueManager.h
-        TimerQueryPool.cpp
         TimerQueryPool.h
         VulkanLayerProducer.cpp
         VulkanLayerProducer.h)
@@ -39,6 +38,7 @@ target_compile_options(OrbitVulkanLayerTests PRIVATE ${STRICT_COMPILE_FLAGS})
 
 target_sources(OrbitVulkanLayerTests PRIVATE
         DeviceManagerTest.cpp
+        TimerQueryPoolTest.cpp
         QueueManagerTest.cpp)
 
 target_link_libraries(
