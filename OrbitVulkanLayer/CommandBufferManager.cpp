@@ -299,6 +299,7 @@ void CommandBufferManager::CompleteSubmits(VkDevice device) {
     for (const auto& marker_state : completed_submission.completed_markers) {
       uint64_t end_timestamp = QueryGpuTimestampNs(
           device, query_pool, marker_state.end_info->slot_index, timestamp_period);
+      query_slots_to_reset.push_back(marker_state.end_info->slot_index);
 
       orbit_grpc_protos::GpuDebugMarker* marker_proto = submission_proto->add_completed_markers();
       marker_proto->set_text_key(
@@ -317,6 +318,7 @@ void CommandBufferManager::CompleteSubmits(VkDevice device) {
 
       uint64_t begin_timestamp = QueryGpuTimestampNs(
           device, query_pool, marker_state.begin_info->slot_index, timestamp_period);
+      query_slots_to_reset.push_back(marker_state.begin_info->slot_index);
 
       begin_debug_marker_proto->set_gpu_timestamp_ns(begin_timestamp);
     }
