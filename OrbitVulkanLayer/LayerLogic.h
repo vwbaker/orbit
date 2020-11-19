@@ -238,7 +238,7 @@ class LayerLogic {
   absl::Mutex vulkan_layer_producer_mutex_;
 
   DispatchTable dispatch_table_;
-  PhysicalDeviceManager physical_device_manager_;
+  PhysicalDeviceManager<DispatchTable> physical_device_manager_;
   TimerQueryPool timer_query_pool_;
   CommandBufferManager command_buffer_manager_;
   QueueManager queue_manager_;

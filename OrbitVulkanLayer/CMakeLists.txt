@@ -20,7 +20,6 @@ target_sources(OrbitVulkanLayer PRIVATE
         Main.cpp
         LayerLogic.cpp
         LayerLogic.h
-        PhysicalDeviceManager.cpp
         PhysicalDeviceManager.h
         QueueManager.cpp
         QueueManager.h
@@ -39,6 +38,7 @@ add_executable(OrbitVulkanLayerTests)
 target_compile_options(OrbitVulkanLayerTests PRIVATE ${STRICT_COMPILE_FLAGS})
 
 target_sources(OrbitVulkanLayerTests PRIVATE
+        PhysicalDeviceManagerTest.cpp
         QueueManagerTest.cpp)
 
 target_link_libraries(

@@ -87,7 +87,7 @@ struct QueueSubmission {
 class CommandBufferManager {
  public:
   explicit CommandBufferManager(DispatchTable* dispatch_table, TimerQueryPool* timer_query_pool,
-                                PhysicalDeviceManager* physical_device_manager,
+                                PhysicalDeviceManager<DispatchTable>* physical_device_manager,
                                 std::optional<VulkanLayerProducer>* vulkan_layer_producer)
       : dispatch_table_(dispatch_table),
         timer_query_pool_(timer_query_pool),
@@ -137,7 +137,7 @@ class CommandBufferManager {
 
   DispatchTable* dispatch_table_;
   TimerQueryPool* timer_query_pool_;
-  PhysicalDeviceManager* physical_device_manager_;
+  PhysicalDeviceManager<DispatchTable>* physical_device_manager_;
 
   [[nodiscard]] bool IsCapturing() {
     return vulkan_layer_producer_->has_value() && (*vulkan_layer_producer_)->IsCapturing();
