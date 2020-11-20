@@ -38,12 +38,13 @@ target_compile_options(OrbitVulkanLayerTests PRIVATE ${STRICT_COMPILE_FLAGS})
 
 target_sources(OrbitVulkanLayerTests PRIVATE
         DeviceManagerTest.cpp
+        DispatchTableTest.cpp
         TimerQueryPoolTest.cpp
         QueueManagerTest.cpp)
 
 target_link_libraries(
-        OrbitVulkanLayerTests
-        PRIVATE OrbitVulkanLayer
+        OrbitVulkanLayerTests PRIVATE
+        OrbitVulkanLayer
         GTest::Main)
 
 register_test(OrbitVulkanLayerTests)
