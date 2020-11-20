@@ -19,12 +19,23 @@ enum SlotState {
 };
 }
 
+/*
+ * This class wraps Vulkan's VkQueryPool specific for timestamp queries, and provides utility
+ * methods to (1) initialize a poo, (2) retrieve an available slot index and (3) reset slot indices.
+ * In order to do so, it stores the internal `SlotState` for each index.
+ *
+ * Thread-Safety: This class is internally synchronized (using read/write locks) and can be safely
+ * accessed from different threads.
+ */
 template <class DispatchTable>
 class TimerQueryPool {
  public:
   explicit TimerQueryPool(DispatchTable* dispatch_table, uint32_t num_timer_query_slots)
       : dispatch_table_(dispatch_table), num_timer_query_slots_(num_timer_query_slots) {}
 
+  /*
+   * Creates and resets a vulkan `VkQueryPool`, ready to use for timestamp queries.
+   */
   void InitializeTimerQueryPool(VkDevice device) {
     VkQueryPool query_pool;
 
@@ -51,12 +62,24 @@ class TimerQueryPool {
     }
   }
 
+  /*
+   * Retrieves the query pool for a give device. Note, that the pool must be initialized using
+   * `InitializeTimerQueryPool` before.
+   */
   [[nodiscard]] VkQueryPool GetQueryPool(VkDevice device) {
     absl::ReaderMutexLock lock(&mutex_);
     CHECK(device_to_query_pool_.contains(device));
     return device_to_query_pool_.at(device);
   }
 
+  /*
+   * Tries to find a free query slot in the device`s pool. It returns `false` if no slot was found
+   * (all slots are occupied) and true otherwise.
+   * In case it successfully found a slot, the index will be written to the given `allocated_index`.
+   *
+   * Note, that the pool pool must be initialized using `InitializeTimerQueryPool` before.
+   * See also `ResetQuerySlots` to make occupied slots available again.
+   */
   [[nodiscard]] bool NextReadyQuerySlot(VkDevice device, uint32_t* allocated_index) {
     absl::WriterMutexLock lock(&mutex_);
     CHECK(device_to_potential_next_free_index_.contains(device));
@@ -77,6 +100,16 @@ class TimerQueryPool {
     return false;
   }
 
+  /*
+   * Resets an occupied slot to be ready for queries again.
+   * If `rollback_only` is set, it will not call to Vulkan to reset the content at that slot.
+   * This is useful, if the slot was retrieved, but the actual query was not yet submitted to
+   * Vulkan (e.g. if on resetting the command buffer).
+   *
+   * Note, that the pool pool must be initialized using `InitializeTimerQueryPool` before.
+   * Further, the given slots must be in the `kReadyForQueryIssue` state, i.e. must be a result
+   * of `NextReadyQuerySlot` and have not been reset yet.
+   */
   void ResetQuerySlots(VkDevice device, const std::vector<uint32_t>& physical_slot_indices,
                        bool rollback_only) {
     if (physical_slot_indices.empty()) {
