@@ -77,7 +77,8 @@ class TimerQueryPool {
     return false;
   }
 
-  void ResetQuerySlots(VkDevice device, const std::vector<uint32_t>& physical_slot_indices) {
+  void ResetQuerySlots(VkDevice device, const std::vector<uint32_t>& physical_slot_indices,
+                       bool rollback_only) {
     if (physical_slot_indices.empty()) {
       return;
     }
@@ -88,25 +89,12 @@ class TimerQueryPool {
       CHECK(physical_slot_index < num_timer_query_slots_);
       const internal::SlotState& current_state = slot_states.at(physical_slot_index);
       CHECK(current_state == internal::SlotState::kQueryPendingOnGPU);
+      slot_states.at(physical_slot_index) = internal::SlotState::kReadyForQueryIssue;
+      if (rollback_only) {
+        continue;
+      }
       VkQueryPool query_pool = device_to_query_pool_.at(device);
       dispatch_table_->ResetQueryPoolEXT(device)(device, query_pool, physical_slot_index, 1);
-      slot_states.at(physical_slot_index) = internal::SlotState::kReadyForQueryIssue;
-    }
-  }
-
-  void RollbackPendingQuerySlots(VkDevice device,
-                                 const std::vector<uint32_t>& physical_slot_indices) {
-    if (physical_slot_indices.empty()) {
-      return;
-    }
-    absl::WriterMutexLock lock(&mutex_);
-    CHECK(device_to_query_slots_.contains(device));
-    std::vector<internal::SlotState>& slot_states = device_to_query_slots_.at(device);
-    for (uint32_t physical_slot_index : physical_slot_indices) {
-      CHECK(physical_slot_index < num_timer_query_slots_);
-      const internal::SlotState& current_state = slot_states.at(physical_slot_index);
-      CHECK(current_state == internal::SlotState::kQueryPendingOnGPU);
-      slot_states.at(physical_slot_index) = internal::SlotState::kReadyForQueryIssue;
     }
   }
 

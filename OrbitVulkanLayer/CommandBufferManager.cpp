@@ -325,7 +325,7 @@ void CommandBufferManager::CompleteSubmits(VkDevice device) {
     (*vulkan_layer_producer_)->EnqueueIntermediateEvent(std::move(capture_event));
   }
 
-  timer_query_pool_->ResetQuerySlots(device, query_slots_to_reset);
+  timer_query_pool_->ResetQuerySlots(device, query_slots_to_reset, false);
 }
 
 std::vector<internal::QueueSubmission> CommandBufferManager::PullCompletedSubmissions(
@@ -402,7 +402,7 @@ void CommandBufferManager::ResetCommandBuffer(VkCommandBuffer command_buffer) {
   if (state.command_buffer_end_slot_index.has_value()) {
     marker_slots_to_rollback.push_back(state.command_buffer_end_slot_index.value());
   }
-  timer_query_pool_->RollbackPendingQuerySlots(device, marker_slots_to_rollback);
+  timer_query_pool_->ResetQuerySlots(device, marker_slots_to_rollback, true);
 
   command_buffer_to_state_.erase(command_buffer);
 }
