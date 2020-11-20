@@ -11,11 +11,13 @@ using ::testing::Return;
 namespace orbit_vulkan_layer {
 
 namespace {
+
 class MockDispatchTable {
  public:
   MOCK_METHOD(PFN_vkGetPhysicalDeviceProperties, GetPhysicalDeviceProperties,
               (VkPhysicalDevice dispatchable_object));
 };
+
 }  // namespace
 
 TEST(DeviceManager, AnUntrackedDeviceCannotBeQueried) {
