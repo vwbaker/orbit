@@ -68,13 +68,11 @@ void OrbitGrpcServerImpl::Shutdown() { server_->Shutdown(); }
 
 void OrbitGrpcServerImpl::Wait() { server_->Wait(); }
 
-void orbit_service::OrbitGrpcServerImpl::AddCaptureStartStopListener(
-    CaptureStartStopListener* listener) {
+void OrbitGrpcServerImpl::AddCaptureStartStopListener(CaptureStartStopListener* listener) {
   capture_service_.AddCaptureStartStopListener(listener);
 }
 
-void orbit_service::OrbitGrpcServerImpl::RemoveCaptureStartStopListener(
-    CaptureStartStopListener* listener) {
+void OrbitGrpcServerImpl::RemoveCaptureStartStopListener(CaptureStartStopListener* listener) {
   capture_service_.RemoveCaptureStartStopListener(listener);
 }
 
