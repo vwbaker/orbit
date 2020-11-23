@@ -17,6 +17,7 @@ target_sources(OrbitVulkanLayer PRIVATE
         CommandBufferManager.cpp
         CommandBufferManager.h
         DeviceManager.h
+        DispatchTable.cpp
         DispatchTable.h
         Main.cpp
         LayerLogic.cpp
