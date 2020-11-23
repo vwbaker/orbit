@@ -143,8 +143,8 @@ class DispatchTable {
     CHECK(device_supports_debug_utils_extension_.contains(key));
     device_supports_debug_utils_extension_.erase(key);
 
-    device_supports_debug_marker_extension_.erase(key);
     CHECK(device_supports_debug_marker_extension_.contains(key));
+    device_supports_debug_marker_extension_.erase(key);
   }
 
   template <typename DispatchableType>

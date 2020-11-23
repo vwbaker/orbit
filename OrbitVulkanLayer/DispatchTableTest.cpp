@@ -7,7 +7,7 @@
 
 namespace orbit_vulkan_layer {
 
-TEST(DispatchTable, CanInitializeForInstance) {
+TEST(DispatchTable, CanInitializeInstance) {
   // We can not create an actual VkInstance, but the first bytes of an any dispatchable type in
   // Vulkan will be a pointer to a dispatch table. This characteristic will be used by our dispatch
   // table wrapper, so we need to mimic it.
@@ -20,7 +20,7 @@ TEST(DispatchTable, CanInitializeForInstance) {
   dispatch_table.CreateInstanceDispatchTable(instance, next_get_instance_proc_addr_function);
 }
 
-TEST(DispatchTable, CannotInitializeTwiceInstance) {
+TEST(DispatchTable, CannotInitializeInstanceTwice) {
   // We can not create an actual VkInstance, but the first bytes of an any dispatchable type in
   // Vulkan will be a pointer to a dispatch table. This characteristic will be used by our dispatch
   // table wrapper, so we need to mimic it.
@@ -36,6 +36,93 @@ TEST(DispatchTable, CannotInitializeTwiceInstance) {
         dispatch_table.CreateInstanceDispatchTable(instance, next_get_instance_proc_addr_function);
       },
       "");
+}
+
+TEST(DispatchTable, CanRemoveInstance) {
+  // We can not create an actual VkInstance, but the first bytes of an any dispatchable type in
+  // Vulkan will be a pointer to a dispatch table. This characteristic will be used by our dispatch
+  // table wrapper, so we need to mimic it.
+  VkLayerInstanceDispatchTable some_dispatch_table = {};
+  auto instance = absl::bit_cast<VkInstance>(&some_dispatch_table);
+  PFN_vkGetInstanceProcAddr next_get_instance_proc_addr_function =
+      +[](VkInstance /*instance*/, const char * /*name*/) -> PFN_vkVoidFunction { return nullptr; };
+
+  DispatchTable dispatch_table = {};
+  dispatch_table.CreateInstanceDispatchTable(instance, next_get_instance_proc_addr_function);
+  dispatch_table.RemoveInstanceDispatchTable(instance);
+}
+
+TEST(DispatchTable, CanInitializeInstanceTwiceAfterRemove) {
+  // We can not create an actual VkInstance, but the first bytes of an any dispatchable type in
+  // Vulkan will be a pointer to a dispatch table. This characteristic will be used by our dispatch
+  // table wrapper, so we need to mimic it.
+  VkLayerInstanceDispatchTable some_dispatch_table = {};
+  auto instance = absl::bit_cast<VkInstance>(&some_dispatch_table);
+  PFN_vkGetInstanceProcAddr next_get_instance_proc_addr_function =
+      +[](VkInstance /*instance*/, const char * /*name*/) -> PFN_vkVoidFunction { return nullptr; };
+
+  DispatchTable dispatch_table = {};
+  dispatch_table.CreateInstanceDispatchTable(instance, next_get_instance_proc_addr_function);
+  dispatch_table.RemoveInstanceDispatchTable(instance);
+  dispatch_table.CreateInstanceDispatchTable(instance, next_get_instance_proc_addr_function);
+}
+
+TEST(DispatchTable, CanInitializeDevice) {
+  // We can not create an actual VkDevice, but the first bytes of an any dispatchable type in
+  // Vulkan will be a pointer to a dispatch table. This characteristic will be used by our dispatch
+  // table wrapper, so we need to mimic it.
+  VkLayerDispatchTable some_dispatch_table = {};
+  auto device = absl::bit_cast<VkDevice>(&some_dispatch_table);
+  PFN_vkGetDeviceProcAddr next_get_device_proc_addr_function =
+      +[](VkDevice /*instance*/, const char * /*name*/) -> PFN_vkVoidFunction { return nullptr; };
+
+  DispatchTable dispatch_table = {};
+  dispatch_table.CreateDeviceDispatchTable(device, next_get_device_proc_addr_function);
+}
+
+TEST(DispatchTable, CannotInitializeDeviceTwice) {
+  // We can not create an actual VkDevice, but the first bytes of an any dispatchable type in
+  // Vulkan will be a pointer to a dispatch table. This characteristic will be used by our dispatch
+  // table wrapper, so we need to mimic it.
+  VkLayerDispatchTable some_dispatch_table = {};
+  auto device = absl::bit_cast<VkDevice>(&some_dispatch_table);
+  PFN_vkGetDeviceProcAddr next_get_device_proc_addr_function =
+      +[](VkDevice /*instance*/, const char * /*name*/) -> PFN_vkVoidFunction { return nullptr; };
+
+  DispatchTable dispatch_table = {};
+  dispatch_table.CreateDeviceDispatchTable(device, next_get_device_proc_addr_function);
+  EXPECT_DEATH(
+      { dispatch_table.CreateDeviceDispatchTable(device, next_get_device_proc_addr_function); },
+      "");
+}
+
+TEST(DispatchTable, CanRemoveDevice) {
+  // We can not create an actual VkDevice, but the first bytes of an any dispatchable type in
+  // Vulkan will be a pointer to a dispatch table. This characteristic will be used by our dispatch
+  // table wrapper, so we need to mimic it.
+  VkLayerDispatchTable some_dispatch_table = {};
+  auto device = absl::bit_cast<VkDevice>(&some_dispatch_table);
+  PFN_vkGetDeviceProcAddr next_get_device_proc_addr_function =
+      +[](VkDevice /*instance*/, const char * /*name*/) -> PFN_vkVoidFunction { return nullptr; };
+
+  DispatchTable dispatch_table = {};
+  dispatch_table.CreateDeviceDispatchTable(device, next_get_device_proc_addr_function);
+  dispatch_table.RemoveDeviceDispatchTable(device);
+}
+
+TEST(DispatchTable, CanInitializeDeviceTwiceAfterRemove) {
+  // We can not create an actual VkDevice, but the first bytes of an any dispatchable type in
+  // Vulkan will be a pointer to a dispatch table. This characteristic will be used by our dispatch
+  // table wrapper, so we need to mimic it.
+  VkLayerDispatchTable some_dispatch_table = {};
+  auto device = absl::bit_cast<VkDevice>(&some_dispatch_table);
+  PFN_vkGetDeviceProcAddr next_get_device_proc_addr_function =
+      +[](VkDevice /*instance*/, const char * /*name*/) -> PFN_vkVoidFunction { return nullptr; };
+
+  DispatchTable dispatch_table = {};
+  dispatch_table.CreateDeviceDispatchTable(device, next_get_device_proc_addr_function);
+  dispatch_table.RemoveDeviceDispatchTable(device);
+  dispatch_table.CreateDeviceDispatchTable(device, next_get_device_proc_addr_function);
 }
 
 }  // namespace orbit_vulkan_layer
