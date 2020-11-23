@@ -393,6 +393,8 @@ ORBIT_EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL OrbitGetInstanceProcAddr(V
 
   ORBIT_GETPROCADDR(CmdBeginDebugUtilsLabelEXT)
   ORBIT_GETPROCADDR(CmdEndDebugUtilsLabelEXT)
+  ORBIT_GETPROCADDR(CmdDebugMarkerBeginEXT)
+  ORBIT_GETPROCADDR(CmdDebugMarkerEndEXT)
 
   LOG("Fallback");
   return logic_.CallGetInstanceProcAddr(instance, name);

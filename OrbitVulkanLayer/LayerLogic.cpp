@@ -162,9 +162,11 @@ void LayerLogic::PostCallGetDeviceQueue2(VkDevice device, const VkDeviceQueueInf
 void LayerLogic::PostCallCmdBeginDebugUtilsLabelEXT(VkCommandBuffer /*command_buffer*/,
                                                     const VkDebugUtilsLabelEXT* /*label_info*/) {
   LOG("PostCallCmdBeginDebugUtilsLabelEXT");
+  CHECK(false);
 }
 void LayerLogic::PreCallCmdEndDebugUtilsLabelEXT(VkCommandBuffer /*command_buffer*/) {
   LOG("PreCallCmdEndDebugUtilsLabelEXT");
+  CHECK(false);
 }
 
 void LayerLogic::PostCallCmdDebugMarkerBeginEXT(VkCommandBuffer command_buffer,
