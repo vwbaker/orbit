@@ -42,6 +42,8 @@ class DispatchTable {
     dispatch_table.EnumerateDeviceExtensionProperties =
         absl::bit_cast<PFN_vkEnumerateDeviceExtensionProperties>(
             next_get_instance_proc_addr_function(instance, "vkEnumerateDeviceExtensionProperties"));
+    dispatch_table.GetPhysicalDeviceProperties = absl::bit_cast<PFN_vkGetPhysicalDeviceProperties>(
+        next_get_instance_proc_addr_function(instance, "vkGetPhysicalDeviceProperties"));
 
     void* key = GetDispatchTableKey(instance);
     {
