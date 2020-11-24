@@ -332,7 +332,7 @@ void CommandBufferManager::CompleteSubmits(VkDevice device) {
       begin_debug_marker_proto->set_gpu_timestamp_ns(begin_timestamp);
     }
 
-    (*vulkan_layer_producer_)->EnqueueIntermediateEvent(std::move(capture_event));
+    (*vulkan_layer_producer_)->EnqueueCaptureEvent(std::move(capture_event));
   }
 
   timer_query_pool_->ResetQuerySlots(device, query_slots_to_reset);

@@ -98,11 +98,13 @@ class CommandBufferManager {
   explicit CommandBufferManager(DispatchTable* dispatch_table,
                                 TimerQueryPool<DispatchTable>* timer_query_pool,
                                 DeviceManager<DispatchTable>* device_manager,
-                                std::optional<VulkanLayerProducer>* vulkan_layer_producer)
+                                std::unique_ptr<VulkanLayerProducer>* vulkan_layer_producer)
       : dispatch_table_(dispatch_table),
         timer_query_pool_(timer_query_pool),
         device_manager_(device_manager),
-        vulkan_layer_producer_{vulkan_layer_producer} {}
+        vulkan_layer_producer_{vulkan_layer_producer} {
+    CHECK(vulkan_layer_producer_ != nullptr);
+  }
   void TrackCommandBuffers(VkDevice device, VkCommandPool pool,
                            const VkCommandBuffer* command_buffers, uint32_t count);
   void UntrackCommandBuffers(VkDevice device, VkCommandPool pool,
@@ -151,9 +153,9 @@ class CommandBufferManager {
   DeviceManager<DispatchTable>* device_manager_;
 
   [[nodiscard]] bool IsCapturing() {
-    return vulkan_layer_producer_->has_value() && (*vulkan_layer_producer_)->IsCapturing();
+    return *vulkan_layer_producer_ != nullptr && (*vulkan_layer_producer_)->IsCapturing();
   }
-  std::optional<VulkanLayerProducer>* vulkan_layer_producer_;
+  std::unique_ptr<VulkanLayerProducer>* vulkan_layer_producer_;
 };
 
 }  // namespace orbit_vulkan_layer

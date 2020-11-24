@@ -24,8 +24,9 @@ target_sources(OrbitVulkanLayer PRIVATE
         QueueManager.cpp
         QueueManager.h
         TimerQueryPool.h
-        VulkanLayerProducer.cpp
-        VulkanLayerProducer.h)
+        VulkanLayerProducer.h
+        VulkanLayerProducerImpl.cpp
+        VulkanLayerProducerImpl.h)
 
 target_link_libraries(OrbitVulkanLayer PUBLIC
         CaptureEventProducer

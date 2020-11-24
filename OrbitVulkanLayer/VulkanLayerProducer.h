@@ -5,31 +5,27 @@
 #ifndef ORBIT_VULKAN_LAYER_VULKAN_LAYER_PRODUCER_H_
 #define ORBIT_VULKAN_LAYER_VULKAN_LAYER_PRODUCER_H_
 
-#include "CaptureEventProducer/LockFreeBufferCaptureEventProducer.h"
-#include "absl/container/flat_hash_set.h"
+#include "producer_side_services.grpc.pb.h"
 
 namespace orbit_vulkan_layer {
 
-class VulkanLayerProducer
-    : public orbit_producer::LockFreeBufferCaptureEventProducer<orbit_grpc_protos::CaptureEvent> {
-  using Base = orbit_producer::LockFreeBufferCaptureEventProducer<orbit_grpc_protos::CaptureEvent>;
+// This interface exposes methods for the communication between the Vulkan layer and Orbit.
+// In particular, it provides those methods to LayerLogic and CommandBufferManager.
+// All the methods are pure virtual to allow mocking for testing.
 
+class VulkanLayerProducer {
  public:
-  uint64_t InternStringIfNecessaryAndGetKey(std::string str);
+  virtual ~VulkanLayerProducer() = default;
 
-  void ClearStringInternPool();
+  [[nodiscard]] virtual bool BringUp(std::string_view unix_domain_socket_path) = 0;
 
- protected:
-  orbit_grpc_protos::CaptureEvent TranslateIntermediateEvent(
-      orbit_grpc_protos::CaptureEvent&& intermediate_event) override;
+  virtual void TakeDown() = 0;
 
-  void OnCaptureStart() override;
+  [[nodiscard]] virtual bool IsCapturing() = 0;
 
- private:
-  static uint64_t ComputeStringKey(const std::string& str) { return std::hash<std::string>{}(str); }
+  virtual void EnqueueCaptureEvent(orbit_grpc_protos::CaptureEvent&& capture_event) = 0;
 
-  absl::flat_hash_set<uint64_t> string_keys_sent_;
-  absl::Mutex string_keys_sent_mutex_;
+  [[nodiscard]] virtual uint64_t InternStringIfNecessaryAndGetKey(std::string str) = 0;
 };
 
 }  // namespace orbit_vulkan_layer

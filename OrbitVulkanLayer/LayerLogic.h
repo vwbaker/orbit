@@ -12,7 +12,7 @@
 #include "OrbitService/ProducerSideUnixDomainSocketPath.h"
 #include "QueueManager.h"
 #include "TimerQueryPool.h"
-#include "VulkanLayerProducer.h"
+#include "VulkanLayerProducerImpl.h"
 #include "vulkan/vulkan.h"
 
 namespace orbit_vulkan_layer {
@@ -35,8 +35,7 @@ namespace orbit_vulkan_layer {
 class LayerLogic {
  public:
   LayerLogic()
-      : vulkan_layer_producer_{std::nullopt},
-        device_manager_(&dispatch_table_),
+      : device_manager_(&dispatch_table_),
         timer_query_pool_(&dispatch_table_, kNumTimerQuerySlots),
         command_buffer_manager_(&dispatch_table_, &timer_query_pool_, &device_manager_,
                                 &vulkan_layer_producer_) {
@@ -216,8 +215,8 @@ class LayerLogic {
  private:
   void InitVulkanLayerProducerIfNecessary() {
     absl::MutexLock lock{&vulkan_layer_producer_mutex_};
-    if (!vulkan_layer_producer_.has_value()) {
-      vulkan_layer_producer_.emplace();
+    if (vulkan_layer_producer_ == nullptr) {
+      vulkan_layer_producer_ = std::make_unique<VulkanLayerProducerImpl>();
       if (!vulkan_layer_producer_->BringUp(orbit_service::kProducerSideUnixDomainSocketPath)) {
         vulkan_layer_producer_.reset();
       }
@@ -226,7 +225,7 @@ class LayerLogic {
 
   void CloseVulkanLayerProducerIfNecessary() {
     absl::MutexLock lock{&vulkan_layer_producer_mutex_};
-    if (vulkan_layer_producer_.has_value()) {
+    if (vulkan_layer_producer_ != nullptr) {
       // TODO: Only do this when DestroyInstance has been called a number of times
       //  equal to the number of times CreateInstance was called.
       vulkan_layer_producer_->TakeDown();
@@ -234,7 +233,7 @@ class LayerLogic {
     }
   }
 
-  std::optional<VulkanLayerProducer> vulkan_layer_producer_;
+  std::unique_ptr<VulkanLayerProducer> vulkan_layer_producer_ = nullptr;
   absl::Mutex vulkan_layer_producer_mutex_;
 
   DispatchTable dispatch_table_;
