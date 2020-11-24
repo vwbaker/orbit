@@ -60,6 +60,7 @@ void OrbitService::Run(std::atomic<bool>* exit_requested) {
   }
   LOG("gRPC server is running");
 
+  LOG("Starting producer-side server at %s", kProducerSideUnixDomainSocketPath);
   ProducerSideServer producer_side_server;
   if (!producer_side_server.BuildAndStart(kProducerSideUnixDomainSocketPath)) {
     ERROR("Unable to start producer-side server");
