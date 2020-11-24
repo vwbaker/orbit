@@ -4,8 +4,9 @@
 
 #include "VulkanLayerProducerImpl.h"
 
-uint64_t orbit_vulkan_layer::VulkanLayerProducerImpl::InternStringIfNecessaryAndGetKey(
-    std::string str) {
+namespace orbit_vulkan_layer {
+
+uint64_t VulkanLayerProducerImpl::InternStringIfNecessaryAndGetKey(std::string str) {
   uint64_t key = ComputeStringKey(str);
   {
     absl::MutexLock lock{&string_keys_sent_mutex_};
@@ -21,3 +22,5 @@ uint64_t orbit_vulkan_layer::VulkanLayerProducerImpl::InternStringIfNecessaryAnd
   EnqueueCaptureEvent(std::move(event));
   return key;
 }
+
+}  // namespace orbit_vulkan_layer
