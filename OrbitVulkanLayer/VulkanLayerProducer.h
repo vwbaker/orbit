@@ -5,13 +5,13 @@
 #ifndef ORBIT_VULKAN_LAYER_VULKAN_LAYER_PRODUCER_H_
 #define ORBIT_VULKAN_LAYER_VULKAN_LAYER_PRODUCER_H_
 
-#include "producer_side_services.grpc.pb.h"
+#include "capture.pb.h"
 
 namespace orbit_vulkan_layer {
 
-// This interface exposes methods for the communication between the Vulkan layer and Orbit.
-// In particular, it provides those methods to LayerLogic and CommandBufferManager.
-// All the methods are pure virtual to allow mocking for testing.
+// This interface exposes methods for the communication between the Vulkan layer and Orbit,
+// while also allowing to be mocked for testing.
+// In particular, it provides such methods to LayerLogic and CommandBufferManager.
 
 class VulkanLayerProducer {
  public:

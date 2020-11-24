@@ -8,7 +8,6 @@
 #include "CaptureEventProducer/LockFreeBufferCaptureEventProducer.h"
 #include "VulkanLayerProducer.h"
 #include "absl/container/flat_hash_set.h"
-#include "producer_side_services.grpc.pb.h"
 
 namespace orbit_vulkan_layer {
 
