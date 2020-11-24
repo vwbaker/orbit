@@ -112,8 +112,6 @@ class TimeGraph {
   [[nodiscard]] StringManager* GetStringManager() { return string_manager_.get(); }
   void SetCanvas(GlCanvas* canvas);
   [[nodiscard]] GlCanvas* GetCanvas() { return canvas_; }
-  void SetFontSize(uint32_t font_size);
-  [[nodiscard]] uint32_t GetFontSize() const { return text_renderer_static_.GetFontSize(); }
   [[nodiscard]] uint32_t CalculateZoomedFontSize() const {
     return lround((font_size_)*layout_.GetScale());
   }
@@ -171,6 +169,7 @@ class TimeGraph {
   [[nodiscard]] uint64_t GetCaptureMax() const { return capture_max_timestamp_; }
   [[nodiscard]] uint64_t GetCurrentMouseTimeNs() const { return current_mouse_time_ns_; }
 
+  [[nodiscard]] bool HasFrameTrack(const orbit_client_protos::FunctionInfo& function) const;
   void RemoveFrameTrack(const orbit_client_protos::FunctionInfo& function);
 
  protected:
