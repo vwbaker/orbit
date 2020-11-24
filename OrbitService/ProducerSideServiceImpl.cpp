@@ -121,13 +121,15 @@ void ProducerSideServiceImpl::SendCommandsThread(
     grpc::ServerReaderWriter<orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse,
                              orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest>* stream,
     bool* all_events_sent_received, std::atomic<bool>* exit_send_commands_thread) {
-  // As a result, an initial StartCaptureCommand is sent
+  // As a result of initializing prev_capture_status to kCaptureFinished,
+  // an initial StartCaptureCommand is sent
   // if service_state_.capture_status is actually CaptureStatus::kCaptureStarted,
   // and an initial StopCaptureCommand is sent (with little effect)
   // if service_state_.capture_status is actually CaptureStatus::kCaptureStopping.
   CaptureStatus prev_capture_status = CaptureStatus::kCaptureFinished;
 
   while (true) {
+    // This is set when ReceiveEventsThread has exited. Then, this thread should also exit.
     if (*exit_send_commands_thread) {
       return;
     }
@@ -151,6 +153,7 @@ void ProducerSideServiceImpl::SendCommandsThread(
           if (!stream->Write(command)) {
             ERROR("Sending StartCaptureCommand to CaptureEventProducer");
             LOG("Terminating call to ReceiveCommandsAndSendEvents as Write failed");
+            // Cause Read in ReceiveEventsThread to also fail if for some reason it hasn't already.
             context->TryCancel();
             return;
           }
@@ -166,6 +169,7 @@ void ProducerSideServiceImpl::SendCommandsThread(
           if (!stream->Write(command)) {
             ERROR("Sending StopCaptureCommand to CaptureEventProducer");
             LOG("Terminating call to ReceiveCommandsAndSendEvents as Write failed");
+            // Cause Read in ReceiveEventsThread to also fail if for some reason it hasn't already.
             context->TryCancel();
             return;
           }

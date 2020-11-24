@@ -14,7 +14,6 @@ namespace orbit_vulkan_layer {
 // This class provides the implementation of VulkanLayerProducer,
 // delegating most methods to LockFreeBufferCaptureEventProducer
 // while also handling interning of strings.
-
 class VulkanLayerProducerImpl : public VulkanLayerProducer {
  public:
   [[nodiscard]] bool BringUp(std::string_view unix_domain_socket_path) override {
