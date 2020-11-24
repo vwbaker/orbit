@@ -9,9 +9,8 @@
 
 namespace orbit_service {
 
-// Interface used to propagate the requests to start and stop the capture,
-// together with the CaptureEventBuffer where to add the generated CaptureEvents.
-
+// This interface is used to propagate requests received by CaptureServiceImpl to start and stop
+// the capture, together with the CaptureEventBuffer where to add the generated CaptureEvents.
 class CaptureStartStopListener {
  public:
   virtual ~CaptureStartStopListener() = default;
