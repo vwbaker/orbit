@@ -173,7 +173,13 @@ void LayerLogic::PostCallCmdDebugMarkerBeginEXT(VkCommandBuffer command_buffer,
                                                 const VkDebugMarkerMarkerInfoEXT* marker_info) {
   LOG("PostCallCmdDebugMarkerBeginEXT");
   CHECK(marker_info != nullptr);
-  command_buffer_manager_.MarkDebugMarkerBegin(command_buffer, marker_info->pMarkerName);
+  command_buffer_manager_.MarkDebugMarkerBegin(command_buffer, marker_info->pMarkerName,
+                                               {
+                                                   .red = marker_info->color[0],
+                                                   .green = marker_info->color[1],
+                                                   .blue = marker_info->color[2],
+                                                   .alpha = marker_info->color[3],
+                                               });
 }
 
 void LayerLogic::PreCallCmdDebugMarkerEndEXT(VkCommandBuffer command_buffer) {

@@ -82,6 +82,18 @@ Color GpuTrack::GetTimerColor(const TimerInfo& timer_info, bool is_selected) con
     return kInactiveColor;
   }
 
+  if (timer_info.has_color()) {
+    return Color(static_cast<uint8_t>(timer_info.color().red() * 255),
+                 static_cast<uint8_t>(timer_info.color().green() * 255),
+                 static_cast<uint8_t>(timer_info.color().blue()),
+                 static_cast<uint8_t>(timer_info.color().alpha()));
+  }
+
+  if (timer_info.type() == TimerInfo::kGpuDebugMarker) {
+    std::string marker_text = string_manager_->Get(timer_info.user_data_key()).value_or("");
+    return TimeGraph::GetColor(marker_text);
+  }
+
   // We color code the timeslices for GPU activity using the color
   // of the CPU thread track that submitted the job.
   Color color = TimeGraph::GetThreadColor(timer_info.thread_id());

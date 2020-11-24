@@ -22,6 +22,13 @@ namespace orbit_vulkan_layer {
 namespace internal {
 enum MarkerType { kDebugMarkerBegin = 0, kDebugMarkerEnd };
 
+struct Color {
+  float red;
+  float green;
+  float blue;
+  float alpha;
+};
+
 struct SubmissionMetaInformation {
   uint64_t pre_submission_cpu_timestamp;
   uint64_t post_submission_cpu_timestamp;
@@ -32,6 +39,7 @@ struct Marker {
   MarkerType type;
   std::optional<uint32_t> slot_index;
   std::string text;
+  Color color;
 };
 
 struct SubmittedMarker {
@@ -43,6 +51,7 @@ struct MarkerState {
   std::optional<SubmittedMarker> begin_info;
   std::optional<SubmittedMarker> end_info;
   std::string text;
+  Color color;
   size_t depth;
 };
 
@@ -103,7 +112,8 @@ class CommandBufferManager {
 
   void MarkCommandBufferEnd(VkCommandBuffer command_buffer);
 
-  void MarkDebugMarkerBegin(VkCommandBuffer command_buffer, const char* text);
+  void MarkDebugMarkerBegin(VkCommandBuffer command_buffer, const char* text,
+                            internal::Color color);
   void MarkDebugMarkerEnd(VkCommandBuffer command_buffer);
 
   void PersistSubmitInformation(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits);

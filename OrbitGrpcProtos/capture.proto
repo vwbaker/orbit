@@ -177,6 +177,13 @@ message AddressInfo {
   }
 }
 
+message Color {
+  float red = 1;
+  float green = 2;
+  float blue = 3;
+  float alpha = 4;
+}
+
 message GpuQueueSubmissionMetaInfo {
   int32 thread_id = 1;
   uint64 pre_submission_cpu_timestamp = 2;
@@ -211,6 +218,7 @@ message GpuDebugMarker {
   uint64 end_gpu_timestamp_ns = 2;
   uint64 text_key = 3;
   uint64 depth = 4;
+  Color color = 5;
 }
 
 message CaptureEvent {

@@ -97,15 +97,16 @@ void CommandBufferManager::MarkCommandBufferEnd(VkCommandBuffer command_buffer) 
   }
 }
 
-void CommandBufferManager::MarkDebugMarkerBegin(VkCommandBuffer command_buffer, const char* text) {
+void CommandBufferManager::MarkDebugMarkerBegin(VkCommandBuffer command_buffer, const char* text,
+                                                internal::Color color) {
   LOG("MarkDebugMarkerBegin");
   CHECK(text != nullptr);
   {
     absl::WriterMutexLock lock(&mutex_);
     CHECK(command_buffer_to_state_.contains(command_buffer));
     internal::CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
-    internal::Marker marker{.type = internal::MarkerType::kDebugMarkerBegin,
-                            .text = std::string(text)};
+    internal::Marker marker{
+        .type = internal::MarkerType::kDebugMarkerBegin, .text = std::string(text), .color = color};
     state.markers.emplace_back(std::move(marker));
   }
 
@@ -226,6 +227,7 @@ void CommandBufferManager::DoPostSubmitQueue(VkQueue queue, uint32_t submit_coun
                 ++queue_submission->num_begin_markers;
               }
               internal::MarkerState marker_state{.text = marker.text,
+                                                 .color = marker.color,
                                                  .begin_info = submitted_marker,
                                                  .depth = markers.marker_stack.size()};
               markers.marker_stack.push(std::move(marker_state));
@@ -303,6 +305,14 @@ void CommandBufferManager::CompleteSubmits(VkDevice device) {
       orbit_grpc_protos::GpuDebugMarker* marker_proto = submission_proto->add_completed_markers();
       marker_proto->set_text_key(
           (*vulkan_layer_producer_)->InternStringIfNecessaryAndGetKey(marker_state.text));
+      if (marker_state.color.red != 0.0f || marker_state.color.green != 0.0f ||
+          marker_state.color.blue != 0.0f || marker_state.color.alpha != 0.0f) {
+        auto color = marker_proto->mutable_color();
+        color->set_red(marker_state.color.red);
+        color->set_green(marker_state.color.green);
+        color->set_blue(marker_state.color.blue);
+        color->set_alpha(marker_state.color.alpha);
+      }
       marker_proto->set_depth(marker_state.depth);
       marker_proto->set_end_gpu_timestamp_ns(end_timestamp);
 

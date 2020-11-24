@@ -9,6 +9,7 @@
 #include "capture_data.pb.h"
 
 using orbit_client_protos::CallstackEvent;
+using orbit_client_protos::Color;
 using orbit_client_protos::LinuxAddressInfo;
 using orbit_client_protos::ThreadStateSliceInfo;
 using orbit_client_protos::TimerInfo;
@@ -635,6 +636,14 @@ void CaptureEventProcessor::ProcessGpuDebugMarkers(
     CHECK(string_intern_pool_.contains(completed_marker.text_key()));
     const std::string& text = string_intern_pool_.at(completed_marker.text_key());
     uint64_t text_key = GetStringHashAndSendToListenerIfNecessary(text);
+
+    if (completed_marker.has_color()) {
+      Color* color = marker_timer.mutable_color();
+      color->set_red(completed_marker.color().red());
+      color->set_green(completed_marker.color().green());
+      color->set_blue(completed_marker.color().blue());
+      color->set_alpha(completed_marker.color().alpha());
+    }
     marker_timer.set_user_data_key(text_key);
     capture_listener_->OnTimer(marker_timer);
   }
