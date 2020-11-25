@@ -59,13 +59,13 @@ class FakeProducerSideService : public orbit_grpc_protos::ProducerSideService::S
     EXPECT_EQ(written, true);
   }
 
-  void Done() {
+  void FinishRpc() {
     if (context_ != nullptr) {
       context_->TryCancel();
       context_ = nullptr;
       EXPECT_NE(stream_, nullptr);
-      stream_ = nullptr;
     }
+    stream_ = nullptr;
   }
 
   MOCK_METHOD(void, OnCaptureEventsReceived, (), ());

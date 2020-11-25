@@ -11,8 +11,6 @@
 #include "grpcpp/grpcpp.h"
 #include "producer_side_services.grpc.pb.h"
 
-using ::testing::InSequence;
-
 using orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest;
 using orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse;
 
@@ -69,7 +67,7 @@ class CaptureEventProducerTest : public ::testing::Test {
     producer->ShutdownAndWait();
     producer.reset();
 
-    fake_service->Done();
+    fake_service->FinishRpc();
     fake_server->Shutdown();
     fake_server->Wait();
 
@@ -85,16 +83,17 @@ class CaptureEventProducerTest : public ::testing::Test {
 }  // namespace
 
 TEST_F(CaptureEventProducerTest, OnCaptureStartStopAndIsCapturing) {
+  static constexpr std::chrono::duration kWaitCommandReceivedDuration =
+      std::chrono::milliseconds(25);
+
   {
-    InSequence in_sequence;
+    ::testing::InSequence in_sequence;
     EXPECT_CALL(*producer, OnCaptureStart).Times(1);
     EXPECT_CALL(*producer, OnCaptureStop).Times(1);
     EXPECT_CALL(*producer, OnCaptureStart).Times(1);
     EXPECT_CALL(*producer, OnCaptureStop).Times(1);
   }
 
-  static constexpr std::chrono::duration kWaitCommandReceivedDuration =
-      std::chrono::milliseconds(10);
   EXPECT_FALSE(producer->IsCapturing());
 
   fake_service->SendStartCaptureCommand();
@@ -126,7 +125,7 @@ TEST_F(CaptureEventProducerTest, OnCaptureStartStopAndIsCapturing) {
 
 TEST_F(CaptureEventProducerTest, SentCaptureEventsAndAllEventsSent) {
   {
-    InSequence in_sequence;
+    ::testing::InSequence in_sequence;
     EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(2);
     EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(1);
   }
