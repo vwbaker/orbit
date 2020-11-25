@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef CAPTURE_EVENT_PRODUCER_LOCK_FREE_BUFFER_CAPTURE_EVENT_PRODUCER_H_
-#define CAPTURE_EVENT_PRODUCER_LOCK_FREE_BUFFER_CAPTURE_EVENT_PRODUCER_H_
+#ifndef ORBIT_PRODUCER_LOCK_FREE_BUFFER_CAPTURE_EVENT_PRODUCER_H_
+#define ORBIT_PRODUCER_LOCK_FREE_BUFFER_CAPTURE_EVENT_PRODUCER_H_
 
-#include "CaptureEventProducer/CaptureEventProducer.h"
 #include "OrbitBase/Logging.h"
+#include "OrbitProducer/CaptureEventProducer.h"
 #include "concurrentqueue.h"
 
 namespace orbit_producer {
@@ -124,4 +124,4 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
 
 }  // namespace orbit_producer
 
-#endif  // CAPTURE_EVENT_PRODUCER_LOCK_FREE_BUFFER_CAPTURE_EVENT_PRODUCER_H_
+#endif  // ORBIT_PRODUCER_LOCK_FREE_BUFFER_CAPTURE_EVENT_PRODUCER_H_

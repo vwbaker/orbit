@@ -30,8 +30,8 @@ target_sources(OrbitVulkanLayer PRIVATE
         VulkanLayerProducerImpl.h)
 
 target_link_libraries(OrbitVulkanLayer PUBLIC
-        CaptureEventProducer
         OrbitBase
+        OrbitProducer
         OrbitProtos)
 
 add_executable(OrbitVulkanLayerTests)

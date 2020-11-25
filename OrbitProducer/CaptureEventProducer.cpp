@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "CaptureEventProducer/CaptureEventProducer.h"
+#include "OrbitProducer/CaptureEventProducer.h"
 
 #include "OrbitBase/Logging.h"
 #include "grpcpp/grpcpp.h"

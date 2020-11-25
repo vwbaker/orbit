@@ -5,7 +5,7 @@
 #ifndef ORBIT_VULKAN_LAYER_VULKAN_LAYER_PRODUCER_IMPL_H_
 #define ORBIT_VULKAN_LAYER_VULKAN_LAYER_PRODUCER_IMPL_H_
 
-#include "CaptureEventProducer/LockFreeBufferCaptureEventProducer.h"
+#include "OrbitProducer/LockFreeBufferCaptureEventProducer.h"
 #include "VulkanLayerProducer.h"
 #include "absl/container/flat_hash_set.h"
 

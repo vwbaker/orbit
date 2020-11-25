@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef CAPTURE_EVENT_PRODUCER_CAPTURE_EVENT_PRODUCER_H_
-#define CAPTURE_EVENT_PRODUCER_CAPTURE_EVENT_PRODUCER_H_
+#ifndef ORBIT_PRODUCER_CAPTURE_EVENT_PRODUCER_H_
+#define ORBIT_PRODUCER_CAPTURE_EVENT_PRODUCER_H_
 
 #include <thread>
 
@@ -51,4 +51,4 @@ class CaptureEventProducer {
 
 }  // namespace orbit_producer
 
-#endif  // CAPTURE_EVENT_PRODUCER_CAPTURE_EVENT_PRODUCER_H_
+#endif  // ORBIT_PRODUCER_CAPTURE_EVENT_PRODUCER_H_
