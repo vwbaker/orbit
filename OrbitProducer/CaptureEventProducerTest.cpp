@@ -87,7 +87,7 @@ class FakeProducerSideService : public orbit_grpc_protos::ProducerSideService::S
       nullptr;
 };
 
-class MockCaptureEventProducer : public CaptureEventProducer {
+class CaptureEventProducerImpl : public CaptureEventProducer {
  public:
   // Override and forward these methods to make them public.
   [[nodiscard]] bool ConnectAndStart(std::string_view unix_domain_socket_path) override {
@@ -122,19 +122,19 @@ class CaptureEventProducerTest : public ::testing::Test {
     fake_server = builder.BuildAndStart();
     ASSERT_NE(fake_server, nullptr);
 
-    mock_producer.emplace();
-    ASSERT_TRUE(mock_producer->ConnectAndStart(kUnixDomainSocketPath));
+    producer.emplace();
+    ASSERT_TRUE(producer->ConnectAndStart(kUnixDomainSocketPath));
 
     // Leave some time for the ReceiveCommandsAndSendEvents RPC to actually happen.
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
 
   void TearDown() override {
     // Leave some time for all pending communication to be finish.
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-    mock_producer->ShutdownAndWait();
-    mock_producer.reset();
+    producer->ShutdownAndWait();
+    producer.reset();
 
     fake_service->Done();
     fake_server->Shutdown();
@@ -146,7 +146,7 @@ class CaptureEventProducerTest : public ::testing::Test {
 
   std::optional<FakeProducerSideService> fake_service;
   std::unique_ptr<grpc::Server> fake_server;
-  std::optional<MockCaptureEventProducer> mock_producer;
+  std::optional<CaptureEventProducerImpl> producer;
 };
 
 }  // namespace
@@ -154,10 +154,10 @@ class CaptureEventProducerTest : public ::testing::Test {
 TEST_F(CaptureEventProducerTest, CalledOnCaptureStartStop) {
   {
     InSequence in_sequence;
-    EXPECT_CALL(*mock_producer, OnCaptureStart).Times(1);
-    EXPECT_CALL(*mock_producer, OnCaptureStop).Times(1);
-    EXPECT_CALL(*mock_producer, OnCaptureStart).Times(1);
-    EXPECT_CALL(*mock_producer, OnCaptureStop).Times(1);
+    EXPECT_CALL(*producer, OnCaptureStart).Times(1);
+    EXPECT_CALL(*producer, OnCaptureStop).Times(1);
+    EXPECT_CALL(*producer, OnCaptureStart).Times(1);
+    EXPECT_CALL(*producer, OnCaptureStop).Times(1);
   }
 
   fake_service->SendStartCaptureCommand();
@@ -181,9 +181,9 @@ TEST_F(CaptureEventProducerTest, SentCaptureEventsAndAllEventsSent) {
       ->mutable_capture_events()
       ->Add()
       ->mutable_gpu_queue_submission();
-  EXPECT_TRUE(mock_producer->SendCaptureEvents(send_events_request));
-  EXPECT_TRUE(mock_producer->SendCaptureEvents(send_events_request));
-  EXPECT_TRUE(mock_producer->NotifyAllEventsSent());
+  EXPECT_TRUE(producer->SendCaptureEvents(send_events_request));
+  EXPECT_TRUE(producer->SendCaptureEvents(send_events_request));
+  EXPECT_TRUE(producer->NotifyAllEventsSent());
 }
 
 }  // namespace orbit_producer
