@@ -17,10 +17,10 @@ namespace orbit_vulkan_layer {
 class VulkanLayerProducerImpl : public VulkanLayerProducer {
  public:
   [[nodiscard]] bool BringUp(std::string_view unix_domain_socket_path) override {
-    return lock_free_producer_.BringUp(unix_domain_socket_path);
+    return lock_free_producer_.ConnectAndStart(unix_domain_socket_path);
   }
 
-  void TakeDown() override { lock_free_producer_.TakeDown(); }
+  void TakeDown() override { lock_free_producer_.ShutdownAndWait(); }
 
   [[nodiscard]] bool IsCapturing() override { return lock_free_producer_.IsCapturing(); }
 

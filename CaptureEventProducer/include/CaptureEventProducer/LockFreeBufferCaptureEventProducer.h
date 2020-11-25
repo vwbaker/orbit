@@ -14,8 +14,8 @@ namespace orbit_producer {
 template <typename IntermediateEventT>
 class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
  public:
-  [[nodiscard]] bool BringUp(std::string_view unix_domain_socket_path) {
-    if (!ConnectAndStart(unix_domain_socket_path)) {
+  [[nodiscard]] bool ConnectAndStart(std::string_view unix_domain_socket_path) override {
+    if (!CaptureEventProducer::ConnectAndStart(unix_domain_socket_path)) {
       return false;
     }
 
@@ -23,13 +23,13 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
     return true;
   }
 
-  void TakeDown() {
-    take_down_requested_ = true;
+  void ShutdownAndWait() override {
+    shutdown_requested_ = true;
 
     CHECK(forwarder_thread_.joinable());
     forwarder_thread_.join();
 
-    ShutdownAndWait();
+    CaptureEventProducer::ShutdownAndWait();
   }
 
   void EnqueueIntermediateEvent(const IntermediateEventT& event) {
@@ -72,7 +72,7 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
     constexpr uint64_t kMaxEventsPerRequest = 10'000;
     std::vector<IntermediateEventT> dequeued_events;
     dequeued_events.resize(kMaxEventsPerRequest);
-    while (!take_down_requested_) {
+    while (!shutdown_requested_) {
       size_t dequeued_event_count;
       while ((dequeued_event_count = lock_free_queue_.try_dequeue_bulk(dequeued_events.begin(),
                                                                        kMaxEventsPerRequest)) > 0) {
@@ -116,7 +116,7 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
   moodycamel::ConcurrentQueue<IntermediateEventT> lock_free_queue_;
 
   std::thread forwarder_thread_;
-  std::atomic<bool> take_down_requested_ = false;
+  std::atomic<bool> shutdown_requested_ = false;
 
   bool should_send_all_events_sent_ = false;
   absl::Mutex should_send_all_events_sent_mutex_;

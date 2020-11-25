@@ -20,8 +20,8 @@ class CaptureEventProducer {
   [[nodiscard]] bool IsCapturing() { return is_capturing_; }
 
  protected:
-  [[nodiscard]] bool ConnectAndStart(std::string_view unix_domain_socket_path);
-  void ShutdownAndWait();
+  [[nodiscard]] virtual bool ConnectAndStart(std::string_view unix_domain_socket_path);
+  virtual void ShutdownAndWait();
 
   virtual void OnCaptureStart();
   virtual void OnCaptureStop();
