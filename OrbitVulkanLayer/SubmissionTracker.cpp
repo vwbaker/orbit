@@ -12,7 +12,6 @@ namespace orbit_vulkan_layer {
 void SubmissionTracker::TrackCommandBuffers(VkDevice device, VkCommandPool pool,
                                             const VkCommandBuffer* command_buffers,
                                             uint32_t count) {
-  LOG("TrackCommandBuffers");
   absl::WriterMutexLock lock(&mutex_);
   if (!pool_to_command_buffers_.contains(pool)) {
     pool_to_command_buffers_[pool] = {};
@@ -29,7 +28,6 @@ void SubmissionTracker::TrackCommandBuffers(VkDevice device, VkCommandPool pool,
 void SubmissionTracker::UntrackCommandBuffers(VkDevice device, VkCommandPool pool,
                                               const VkCommandBuffer* command_buffers,
                                               uint32_t count) {
-  LOG("UntrackCommandBuffers");
   absl::WriterMutexLock lock(&mutex_);
   absl::flat_hash_set<VkCommandBuffer>& associated_command_buffers =
       pool_to_command_buffers_.at(pool);
@@ -47,7 +45,6 @@ void SubmissionTracker::UntrackCommandBuffers(VkDevice device, VkCommandPool poo
 }
 
 void SubmissionTracker::MarkCommandBufferBegin(VkCommandBuffer command_buffer) {
-  LOG("MarkCommandBufferBegin");
   // Even when we are not capturing we create state for this command buffer to allow the
   // debug marker tracking.
   {
@@ -68,7 +65,6 @@ void SubmissionTracker::MarkCommandBufferBegin(VkCommandBuffer command_buffer) {
 }
 
 void SubmissionTracker::MarkCommandBufferEnd(VkCommandBuffer command_buffer) {
-  LOG("MarkCommandBufferEnd");
   if (!IsCapturing()) {
     return;
   }
@@ -99,7 +95,6 @@ void SubmissionTracker::MarkCommandBufferEnd(VkCommandBuffer command_buffer) {
 
 void SubmissionTracker::MarkDebugMarkerBegin(VkCommandBuffer command_buffer, const char* text,
                                              internal::Color color) {
-  LOG("MarkDebugMarkerBegin");
   CHECK(text != nullptr);
   {
     absl::WriterMutexLock lock(&mutex_);
@@ -152,7 +147,6 @@ void SubmissionTracker::MarkDebugMarkerEnd(VkCommandBuffer command_buffer) {
 // command buffers (which will be done in the vkQueuePresentKHR).
 void SubmissionTracker::PersistSubmitInformation(VkQueue queue, uint32_t submit_count,
                                                  const VkSubmitInfo* submits) {
-  LOG("PersistSubmitInformation");
   if (!IsCapturing()) {
     return;
   }
@@ -192,7 +186,6 @@ void SubmissionTracker::PersistSubmitInformation(VkQueue queue, uint32_t submit_
 // This allows us to map submissions from the vulkan layer to the driver submissions.
 void SubmissionTracker::DoPostSubmitQueue(VkQueue queue, uint32_t submit_count,
                                           const VkSubmitInfo* submits) {
-  LOG("PersistSubmitInformation");
   {
     absl::WriterMutexLock lock(&mutex_);
     if (!queue_to_markers_.contains(queue)) {
@@ -253,7 +246,6 @@ void SubmissionTracker::DoPostSubmitQueue(VkQueue queue, uint32_t submit_count,
 }
 
 void SubmissionTracker::CompleteSubmits(VkDevice device) {
-  LOG("CompleteSubmits");
   VkQueryPool query_pool = timer_query_pool_->GetQueryPool(device);
   std::vector<internal::QueueSubmission> completed_submissions =
       PullCompletedSubmissions(device, query_pool);
@@ -398,7 +390,6 @@ std::vector<internal::QueueSubmission> SubmissionTracker::PullCompletedSubmissio
 }
 
 void SubmissionTracker::ResetCommandBuffer(VkCommandBuffer command_buffer) {
-  LOG("ResetCommandBuffer");
   absl::WriterMutexLock lock(&mutex_);
   if (!command_buffer_to_state_.contains(command_buffer)) {
     return;
@@ -418,7 +409,6 @@ void SubmissionTracker::ResetCommandBuffer(VkCommandBuffer command_buffer) {
 }
 
 void SubmissionTracker::ResetCommandPool(VkCommandPool command_pool) {
-  LOG("ResetCommandPool");
   absl::flat_hash_set<VkCommandBuffer> command_buffers;
   {
     absl::ReaderMutexLock lock(&mutex_);
@@ -434,7 +424,6 @@ void SubmissionTracker::ResetCommandPool(VkCommandPool command_pool) {
 
 uint32_t SubmissionTracker::RecordTimestamp(VkCommandBuffer command_buffer,
                                             VkPipelineStageFlagBits pipeline_stage_flags) {
-  LOG("RecordTimestamp");
   VkDevice device;
   {
     absl::ReaderMutexLock lock(&mutex_);
@@ -455,7 +444,6 @@ uint32_t SubmissionTracker::RecordTimestamp(VkCommandBuffer command_buffer,
 
 uint64_t SubmissionTracker::QueryGpuTimestampNs(VkDevice device, VkQueryPool query_pool,
                                                 uint32_t slot_index, float timestamp_period) {
-  LOG("QueryGpuTimestampNs");
   static constexpr VkDeviceSize kResultStride = sizeof(uint64_t);
 
   uint64_t timestamp = 0;
@@ -469,7 +457,6 @@ uint64_t SubmissionTracker::QueryGpuTimestampNs(VkDevice device, VkQueryPool que
 
 void SubmissionTracker::WriteMetaInfo(const internal::SubmissionMetaInformation& meta_info,
                                       orbit_grpc_protos::GpuQueueSubmissionMetaInfo* target_proto) {
-  LOG("WriteMetaInfo");
   target_proto->set_tid(meta_info.thread_id);
   target_proto->set_pre_submission_cpu_timestamp(meta_info.pre_submission_cpu_timestamp);
   target_proto->set_post_submission_cpu_timestamp(meta_info.post_submission_cpu_timestamp);
