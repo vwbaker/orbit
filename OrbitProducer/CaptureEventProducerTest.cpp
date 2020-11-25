@@ -11,9 +11,6 @@
 #include "grpcpp/grpcpp.h"
 #include "producer_side_services.grpc.pb.h"
 
-using orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest;
-using orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse;
-
 namespace orbit_producer {
 
 namespace {
@@ -130,7 +127,7 @@ TEST_F(CaptureEventProducerTest, SentCaptureEventsAndAllEventsSent) {
     EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(1);
   }
 
-  ReceiveCommandsAndSendEventsRequest send_events_request;
+  orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest send_events_request;
   send_events_request.mutable_buffered_capture_events()
       ->mutable_capture_events()
       ->Add()
