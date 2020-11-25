@@ -14,8 +14,6 @@ target_include_directories(OrbitVulkanLayer PRIVATE
         ${CMAKE_CURRENT_LIST_DIR})
 
 target_sources(OrbitVulkanLayer PRIVATE
-        CommandBufferManager.cpp
-        CommandBufferManager.h
         DeviceManager.h
         DispatchTable.cpp
         DispatchTable.h
@@ -24,6 +22,8 @@ target_sources(OrbitVulkanLayer PRIVATE
         LayerLogic.h
         QueueManager.cpp
         QueueManager.h
+        SubmissionTracker.cpp
+        SubmissionTracker.h
         TimerQueryPool.h
         VulkanLayerProducer.h
         VulkanLayerProducerImpl.cpp

@@ -23,6 +23,7 @@ namespace internal {
 enum MarkerType { kDebugMarkerBegin = 0, kDebugMarkerEnd };
 
 struct Color {
+  // Values are all in range [0.f, 1.f.]
   float red;
   float green;
   float blue;
@@ -61,7 +62,7 @@ struct QueueMarkerState {
 
 struct CommandBufferState {
   std::optional<uint32_t> command_buffer_begin_slot_index;
-  std::optional<uint32_t> command_buffer_end_slot_index = std::nullopt;
+  std::optional<uint32_t> command_buffer_end_slot_index;
   std::vector<Marker> markers;
 };
 
@@ -83,22 +84,28 @@ struct QueueSubmission {
 }  // namespace internal
 
 /*
- * This class is responsible to track command buffers and command pools.
- * TODO: So far it only tracks the allocation/de-allocation of buffers and pools.
- *  It should probably also track the timestamps inside the buffers (and the markers?)
+ * This class ultimately is responsible to track command buffer and debug marker timings.
+ * To do so, it keeps tracks of command-buffer allocations, destruction, begins, ends as well as
+ * submissions.
+ * On `VkBeginCommandBuffer` and `VkEndCommandBuffer` it can (if capturing) insert write timestamp
+ * commands (`VkCmdWriteTimestamp`). The same is done for debug marker begins and ends. All that
+ * data will be gathered together at a queue submission (`VkQueueSubmit`).
  *
- * It also tracks which command buffer belongs to which device, which can be used
- * in the `DispatchTable` for function look-up.
+ * Upon every `VkQueuePresentKHR` it will check if the timestamps of a certain submission are
+ * already available, and if so, it will send the results over to the `VulkanLayerProducer`.
+ *
+ * See also `DispatchTable` (for vulkan dispatch), `TimerQueryPool` (to manage the timestamp slots),
+ * and `DeviceManager` (to retrieve device properties).
  *
  * Thread-Safety: This class is internally synchronized (using read/write locks), and can be
  * safely accessed from different threads.
  */
-class CommandBufferManager {
+class SubmissionTracker {
  public:
-  explicit CommandBufferManager(DispatchTable* dispatch_table,
-                                TimerQueryPool<DispatchTable>* timer_query_pool,
-                                DeviceManager<DispatchTable>* device_manager,
-                                std::unique_ptr<VulkanLayerProducer>* vulkan_layer_producer)
+  explicit SubmissionTracker(DispatchTable* dispatch_table,
+                             TimerQueryPool<DispatchTable>* timer_query_pool,
+                             DeviceManager<DispatchTable>* device_manager,
+                             std::unique_ptr<VulkanLayerProducer>* vulkan_layer_producer)
       : dispatch_table_(dispatch_table),
         timer_query_pool_(timer_query_pool),
         device_manager_(device_manager),

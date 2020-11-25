@@ -2,16 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "CommandBufferManager.h"
+#include "SubmissionTracker.h"
 
 #include "OrbitBase/Logging.h"
 #include "OrbitBase/Profiling.h"
 
 namespace orbit_vulkan_layer {
 
-void CommandBufferManager::TrackCommandBuffers(VkDevice device, VkCommandPool pool,
-                                               const VkCommandBuffer* command_buffers,
-                                               uint32_t count) {
+void SubmissionTracker::TrackCommandBuffers(VkDevice device, VkCommandPool pool,
+                                            const VkCommandBuffer* command_buffers,
+                                            uint32_t count) {
   LOG("TrackCommandBuffers");
   absl::WriterMutexLock lock(&mutex_);
   if (!pool_to_command_buffers_.contains(pool)) {
@@ -26,9 +26,9 @@ void CommandBufferManager::TrackCommandBuffers(VkDevice device, VkCommandPool po
   }
 }
 
-void CommandBufferManager::UntrackCommandBuffers(VkDevice device, VkCommandPool pool,
-                                                 const VkCommandBuffer* command_buffers,
-                                                 uint32_t count) {
+void SubmissionTracker::UntrackCommandBuffers(VkDevice device, VkCommandPool pool,
+                                              const VkCommandBuffer* command_buffers,
+                                              uint32_t count) {
   LOG("UntrackCommandBuffers");
   absl::WriterMutexLock lock(&mutex_);
   absl::flat_hash_set<VkCommandBuffer>& associated_command_buffers =
@@ -46,7 +46,7 @@ void CommandBufferManager::UntrackCommandBuffers(VkDevice device, VkCommandPool 
   }
 }
 
-void CommandBufferManager::MarkCommandBufferBegin(VkCommandBuffer command_buffer) {
+void SubmissionTracker::MarkCommandBufferBegin(VkCommandBuffer command_buffer) {
   LOG("MarkCommandBufferBegin");
   // Even when we are not capturing we create state for this command buffer to allow the
   // debug marker tracking.
@@ -67,7 +67,7 @@ void CommandBufferManager::MarkCommandBufferBegin(VkCommandBuffer command_buffer
   }
 }
 
-void CommandBufferManager::MarkCommandBufferEnd(VkCommandBuffer command_buffer) {
+void SubmissionTracker::MarkCommandBufferEnd(VkCommandBuffer command_buffer) {
   LOG("MarkCommandBufferEnd");
   if (!IsCapturing()) {
     return;
@@ -97,8 +97,8 @@ void CommandBufferManager::MarkCommandBufferEnd(VkCommandBuffer command_buffer) 
   }
 }
 
-void CommandBufferManager::MarkDebugMarkerBegin(VkCommandBuffer command_buffer, const char* text,
-                                                internal::Color color) {
+void SubmissionTracker::MarkDebugMarkerBegin(VkCommandBuffer command_buffer, const char* text,
+                                             internal::Color color) {
   LOG("MarkDebugMarkerBegin");
   CHECK(text != nullptr);
   {
@@ -124,7 +124,7 @@ void CommandBufferManager::MarkDebugMarkerBegin(VkCommandBuffer command_buffer, 
   }
 }
 
-void CommandBufferManager::MarkDebugMarkerEnd(VkCommandBuffer command_buffer) {
+void SubmissionTracker::MarkDebugMarkerEnd(VkCommandBuffer command_buffer) {
   {
     absl::WriterMutexLock lock(&mutex_);
     CHECK(command_buffer_to_state_.contains(command_buffer));
@@ -150,8 +150,8 @@ void CommandBufferManager::MarkDebugMarkerEnd(VkCommandBuffer command_buffer) {
 // Thus, our identification via the pointers become invalid. We will use the vkQueueSubmit
 // to make our data persistent until we have processed the results of the execution of these
 // command buffers (which will be done in the vkQueuePresentKHR).
-void CommandBufferManager::PersistSubmitInformation(VkQueue queue, uint32_t submit_count,
-                                                    const VkSubmitInfo* submits) {
+void SubmissionTracker::PersistSubmitInformation(VkQueue queue, uint32_t submit_count,
+                                                 const VkSubmitInfo* submits) {
   LOG("PersistSubmitInformation");
   if (!IsCapturing()) {
     return;
@@ -190,8 +190,8 @@ void CommandBufferManager::PersistSubmitInformation(VkQueue queue, uint32_t subm
 
 // Take a timestamp before and after the execution of the driver code for the submission.
 // This allows us to map submissions from the vulkan layer to the driver submissions.
-void CommandBufferManager::DoPostSubmitQueue(VkQueue queue, uint32_t submit_count,
-                                             const VkSubmitInfo* submits) {
+void SubmissionTracker::DoPostSubmitQueue(VkQueue queue, uint32_t submit_count,
+                                          const VkSubmitInfo* submits) {
   LOG("PersistSubmitInformation");
   {
     absl::WriterMutexLock lock(&mutex_);
@@ -252,7 +252,7 @@ void CommandBufferManager::DoPostSubmitQueue(VkQueue queue, uint32_t submit_coun
   }
 }
 
-void CommandBufferManager::CompleteSubmits(VkDevice device) {
+void SubmissionTracker::CompleteSubmits(VkDevice device) {
   LOG("CompleteSubmits");
   VkQueryPool query_pool = timer_query_pool_->GetQueryPool(device);
   std::vector<internal::QueueSubmission> completed_submissions =
@@ -338,7 +338,7 @@ void CommandBufferManager::CompleteSubmits(VkDevice device) {
   timer_query_pool_->ResetQuerySlots(device, query_slots_to_reset);
 }
 
-std::vector<internal::QueueSubmission> CommandBufferManager::PullCompletedSubmissions(
+std::vector<internal::QueueSubmission> SubmissionTracker::PullCompletedSubmissions(
     VkDevice device, VkQueryPool query_pool) {
   std::vector<internal::QueueSubmission> completed_submissions;
 
@@ -397,7 +397,7 @@ std::vector<internal::QueueSubmission> CommandBufferManager::PullCompletedSubmis
   return completed_submissions;
 }
 
-void CommandBufferManager::ResetCommandBuffer(VkCommandBuffer command_buffer) {
+void SubmissionTracker::ResetCommandBuffer(VkCommandBuffer command_buffer) {
   LOG("ResetCommandBuffer");
   absl::WriterMutexLock lock(&mutex_);
   if (!command_buffer_to_state_.contains(command_buffer)) {
@@ -417,7 +417,7 @@ void CommandBufferManager::ResetCommandBuffer(VkCommandBuffer command_buffer) {
   command_buffer_to_state_.erase(command_buffer);
 }
 
-void CommandBufferManager::ResetCommandPool(VkCommandPool command_pool) {
+void SubmissionTracker::ResetCommandPool(VkCommandPool command_pool) {
   LOG("ResetCommandPool");
   absl::flat_hash_set<VkCommandBuffer> command_buffers;
   {
@@ -432,8 +432,8 @@ void CommandBufferManager::ResetCommandPool(VkCommandPool command_pool) {
   }
 }
 
-uint32_t CommandBufferManager::RecordTimestamp(VkCommandBuffer command_buffer,
-                                               VkPipelineStageFlagBits pipeline_stage_flags) {
+uint32_t SubmissionTracker::RecordTimestamp(VkCommandBuffer command_buffer,
+                                            VkPipelineStageFlagBits pipeline_stage_flags) {
   LOG("RecordTimestamp");
   VkDevice device;
   {
@@ -453,8 +453,8 @@ uint32_t CommandBufferManager::RecordTimestamp(VkCommandBuffer command_buffer,
   return slot_index;
 }
 
-uint64_t CommandBufferManager::QueryGpuTimestampNs(VkDevice device, VkQueryPool query_pool,
-                                                   uint32_t slot_index, float timestamp_period) {
+uint64_t SubmissionTracker::QueryGpuTimestampNs(VkDevice device, VkQueryPool query_pool,
+                                                uint32_t slot_index, float timestamp_period) {
   LOG("QueryGpuTimestampNs");
   static constexpr VkDeviceSize kResultStride = sizeof(uint64_t);
 
@@ -467,9 +467,8 @@ uint64_t CommandBufferManager::QueryGpuTimestampNs(VkDevice device, VkQueryPool 
   return static_cast<uint64_t>(static_cast<double>(timestamp) * timestamp_period);
 }
 
-void CommandBufferManager::WriteMetaInfo(
-    const internal::SubmissionMetaInformation& meta_info,
-    orbit_grpc_protos::GpuQueueSubmissionMetaInfo* target_proto) {
+void SubmissionTracker::WriteMetaInfo(const internal::SubmissionMetaInformation& meta_info,
+                                      orbit_grpc_protos::GpuQueueSubmissionMetaInfo* target_proto) {
   LOG("WriteMetaInfo");
   target_proto->set_tid(meta_info.thread_id);
   target_proto->set_pre_submission_cpu_timestamp(meta_info.pre_submission_cpu_timestamp);

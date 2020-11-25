@@ -5,12 +5,12 @@
 #ifndef ORBIT_VULKAN_LAYER_LAYER_LOGIC_H_
 #define ORBIT_VULKAN_LAYER_LAYER_LOGIC_H_
 
-#include "CommandBufferManager.h"
 #include "DeviceManager.h"
 #include "DispatchTable.h"
 #include "OrbitBase/Logging.h"
 #include "OrbitService/ProducerSideUnixDomainSocketPath.h"
 #include "QueueManager.h"
+#include "SubmissionTracker.h"
 #include "TimerQueryPool.h"
 #include "VulkanLayerProducerImpl.h"
 #include "vulkan/vulkan.h"
@@ -239,7 +239,7 @@ class LayerLogic {
   DispatchTable dispatch_table_;
   DeviceManager<DispatchTable> device_manager_;
   TimerQueryPool<DispatchTable> timer_query_pool_;
-  CommandBufferManager command_buffer_manager_;
+  SubmissionTracker command_buffer_manager_;
   QueueManager queue_manager_;
 
   static constexpr uint32_t kNumTimerQuerySlots = 65536;
