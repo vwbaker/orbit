@@ -1123,7 +1123,8 @@ int TimeGraph::FindMovingTrackIndex() {
 }
 
 void TimeGraph::UpdateTracks(uint64_t min_tick, uint64_t max_tick, PickingMode picking_mode) {
-  float current_y = -layout_.GetSchedulerTrackOffset();
+  // Make sure track tab fits in the viewport.
+  float current_y = -layout_.GetSchedulerTrackOffset() - layout_.GetTrackTabHeight();
   float pinned_tracks_height = 0.f;
 
   // Draw pinned tracks
@@ -1140,8 +1141,6 @@ void TimeGraph::UpdateTracks(uint64_t min_tick, uint64_t max_tick, PickingMode p
     current_y -= height;
     pinned_tracks_height += height;
   }
-
-  current_y = -layout_.GetSchedulerTrackOffset() - pinned_tracks_height;
 
   // Draw unpinned tracks
   for (auto& track : sorted_filtered_tracks_) {
