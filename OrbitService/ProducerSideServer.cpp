@@ -14,7 +14,7 @@ bool ProducerSideServer::BuildAndStart(std::string_view unix_domain_socket_path)
   CHECK(server_ == nullptr);
 
   grpc::ServerBuilder builder;
-  builder.AddListeningPort(absl::StrFormat("unix://%s", unix_domain_socket_path),
+  builder.AddListeningPort(absl::StrFormat("unix:%s", unix_domain_socket_path),
                            grpc::InsecureServerCredentials());
 
   builder.RegisterService(&producer_side_service_);

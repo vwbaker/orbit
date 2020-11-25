@@ -16,7 +16,7 @@ namespace orbit_producer {
 CaptureEventProducer::~CaptureEventProducer() = default;
 
 bool CaptureEventProducer::ConnectAndStart(std::string_view unix_domain_socket_path) {
-  std::string server_address = absl::StrFormat("unix://%s", unix_domain_socket_path);
+  std::string server_address = absl::StrFormat("unix:%s", unix_domain_socket_path);
   std::shared_ptr<grpc::Channel> channel = grpc::CreateCustomChannel(
       server_address, grpc::InsecureChannelCredentials(), grpc::ChannelArguments{});
   if (channel == nullptr) {
