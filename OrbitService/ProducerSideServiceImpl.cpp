@@ -245,10 +245,11 @@ void ProducerSideServiceImpl::ReceiveEventsThread(
     }
 
     switch (request.event_case()) {
-      case orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest::kCaptureEvents: {
+      case orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest::kBufferedCaptureEvents: {
         absl::MutexLock lock{&capture_event_buffer_mutex_};
         if (capture_event_buffer_ != nullptr) {
-          for (orbit_grpc_protos::CaptureEvent event : request.capture_events().capture_events()) {
+          for (orbit_grpc_protos::CaptureEvent event :
+               request.buffered_capture_events().capture_events()) {
             capture_event_buffer_->AddEvent(std::move(event));
           }
         }

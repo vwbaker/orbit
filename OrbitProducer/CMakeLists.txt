@@ -24,3 +24,16 @@ target_link_libraries(OrbitProducer PUBLIC
         OrbitServiceLib
         abseil::abseil
         concurrentqueue::concurrentqueue)
+
+add_executable(OrbitProducerTests)
+
+target_compile_options(OrbitProducerTests PRIVATE ${STRICT_COMPILE_FLAGS})
+
+target_sources(OrbitProducerTests PRIVATE
+        CaptureEventProducerTest.cpp)
+
+target_link_libraries(OrbitProducerTests PRIVATE
+        OrbitProducer
+        GTest::Main)
+
+register_test(OrbitProducerTests)

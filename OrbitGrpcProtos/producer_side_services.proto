@@ -15,7 +15,7 @@ message ReceiveCommandsAndSendEventsRequest {
   message AllEventsSent {}
 
   oneof event {
-    BufferedCaptureEvents capture_events = 1;
+    BufferedCaptureEvents buffered_capture_events = 1;
     AllEventsSent all_events_sent = 2;
   }
 }

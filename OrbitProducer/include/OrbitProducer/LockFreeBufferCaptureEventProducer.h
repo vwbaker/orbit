@@ -77,7 +77,7 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
       while ((dequeued_event_count = lock_free_queue_.try_dequeue_bulk(dequeued_events.begin(),
                                                                        kMaxEventsPerRequest)) > 0) {
         orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest send_request;
-        auto* capture_events = send_request.mutable_capture_events()->mutable_capture_events();
+        auto* capture_events = send_request.mutable_buffered_capture_events()->mutable_capture_events();
         for (size_t i = 0; i < dequeued_event_count; ++i) {
           orbit_grpc_protos::CaptureEvent* event = capture_events->Add();
           *event = TranslateIntermediateEvent(std::move(dequeued_events[i]));

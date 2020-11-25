@@ -62,7 +62,7 @@ void CaptureEventProducer::OnCaptureStop() { LOG("CaptureEventProducer called On
 bool CaptureEventProducer::SendCaptureEvents(
     const orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest& send_events_request) {
   CHECK(send_events_request.event_case() ==
-        orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest::kCaptureEvents);
+        orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest::kBufferedCaptureEvents);
 
   CHECK(producer_side_service_stub_ != nullptr);
   {
@@ -139,11 +139,13 @@ void CaptureEventProducer::ConnectAndReceiveCommandsThread() {
           "gRPC connection with ProducerSideService");
       // This is the reason why we protect shutdown_requested_ with a Mutex
       // instead of using an std::atomic<bool>: so that we can use LockWhenWithTimeout.
-      shutdown_requested_mutex_.ReaderLockWhenWithTimeout(
-          absl::Condition(
-              +[](bool* shutdown_requested) { return *shutdown_requested; }, &shutdown_requested_),
-          kRetryConnectingDelay);
-      shutdown_requested_mutex_.Unlock();
+      if (shutdown_requested_mutex_.ReaderLockWhenWithTimeout(
+              absl::Condition(
+                  +[](bool* shutdown_requested) { return *shutdown_requested; },
+                  &shutdown_requested_),
+              kRetryConnectingDelay)) {
+        shutdown_requested_mutex_.ReaderUnlock();
+      }
       continue;
     }
     LOG("Called ReceiveCommandsAndSendEvents on ProducerSideService");
@@ -171,12 +173,13 @@ void CaptureEventProducer::ConnectAndReceiveCommandsThread() {
 
         // Wait before trying to reconnect, to avoid continuously trying to reconnect
         // when OrbitService is not reachable.
-        shutdown_requested_mutex_.ReaderLockWhenWithTimeout(
-            absl::Condition(
-                +[](bool* shutdown_requested) { return *shutdown_requested; },
-                &shutdown_requested_),
-            kRetryConnectingDelay);
-        shutdown_requested_mutex_.Unlock();
+        if (shutdown_requested_mutex_.ReaderLockWhenWithTimeout(
+                absl::Condition(
+                    +[](bool* shutdown_requested) { return *shutdown_requested; },
+                    &shutdown_requested_),
+                kRetryConnectingDelay)) {
+          shutdown_requested_mutex_.ReaderUnlock();
+        }
         break;
       }
 
