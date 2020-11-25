@@ -44,7 +44,7 @@ class CaptureEventProducerImpl : public CaptureEventProducer {
 class CaptureEventProducerTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    static const std::string kUnixDomainSocketPath = "./capture-event-producer-test-socket";
+    static const std::string kUnixDomainSocketPath = "./orbit-producer-tests-socket";
 
     grpc::ServerBuilder builder;
     builder.AddListeningPort(absl::StrFormat("unix:%s", kUnixDomainSocketPath),
@@ -63,7 +63,7 @@ class CaptureEventProducerTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    // Leave some time for all pending communication to be finish.
+    // Leave some time for all pending communication to finish.
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     producer->ShutdownAndWait();
@@ -84,7 +84,7 @@ class CaptureEventProducerTest : public ::testing::Test {
 
 }  // namespace
 
-TEST_F(CaptureEventProducerTest, CalledOnCaptureStartStop) {
+TEST_F(CaptureEventProducerTest, OnCaptureStartStopAndIsCapturing) {
   {
     InSequence in_sequence;
     EXPECT_CALL(*producer, OnCaptureStart).Times(1);
@@ -93,13 +93,35 @@ TEST_F(CaptureEventProducerTest, CalledOnCaptureStartStop) {
     EXPECT_CALL(*producer, OnCaptureStop).Times(1);
   }
 
-  fake_service->SendStartCaptureCommand();
-  fake_service->SendStartCaptureCommand();
-  fake_service->SendStopCaptureCommand();
-  fake_service->SendStopCaptureCommand();
+  static constexpr std::chrono::duration kWaitCommandReceivedDuration =
+      std::chrono::milliseconds(10);
+  EXPECT_FALSE(producer->IsCapturing());
 
   fake_service->SendStartCaptureCommand();
+  std::this_thread::sleep_for(kWaitCommandReceivedDuration);
+  EXPECT_TRUE(producer->IsCapturing());
+
+  // This should have no effect.
+  fake_service->SendStartCaptureCommand();
+  std::this_thread::sleep_for(kWaitCommandReceivedDuration);
+  EXPECT_TRUE(producer->IsCapturing());
+
   fake_service->SendStopCaptureCommand();
+  std::this_thread::sleep_for(kWaitCommandReceivedDuration);
+  EXPECT_FALSE(producer->IsCapturing());
+
+  // This should have no effect.
+  fake_service->SendStopCaptureCommand();
+  std::this_thread::sleep_for(kWaitCommandReceivedDuration);
+  EXPECT_FALSE(producer->IsCapturing());
+
+  fake_service->SendStartCaptureCommand();
+  std::this_thread::sleep_for(kWaitCommandReceivedDuration);
+  EXPECT_TRUE(producer->IsCapturing());
+
+  fake_service->SendStopCaptureCommand();
+  std::this_thread::sleep_for(kWaitCommandReceivedDuration);
+  EXPECT_FALSE(producer->IsCapturing());
 }
 
 TEST_F(CaptureEventProducerTest, SentCaptureEventsAndAllEventsSent) {
