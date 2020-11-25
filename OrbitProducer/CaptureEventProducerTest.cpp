@@ -27,7 +27,6 @@ class FakeProducerSideService : public orbit_grpc_protos::ProducerSideService::S
       ::grpc::ServerReaderWriter< ::orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse,
                                   ::orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest>* stream)
       override {
-    LOG("ReceiveCommandsAndSendEvents");
     EXPECT_EQ(context_, nullptr);
     context_ = context;
     stream_ = stream;
@@ -82,9 +81,8 @@ class FakeProducerSideService : public orbit_grpc_protos::ProducerSideService::S
 
  private:
   grpc::ServerContext* context_ = nullptr;
-  grpc::ServerReaderWriter<orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse,
-                           orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest>* stream_ =
-      nullptr;
+  grpc::ServerReaderWriter<ReceiveCommandsAndSendEventsResponse,
+                           ReceiveCommandsAndSendEventsRequest>* stream_ = nullptr;
 };
 
 class CaptureEventProducerImpl : public CaptureEventProducer {
