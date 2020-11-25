@@ -471,7 +471,7 @@ void CommandBufferManager::WriteMetaInfo(
     const internal::SubmissionMetaInformation& meta_info,
     orbit_grpc_protos::GpuQueueSubmissionMetaInfo* target_proto) {
   LOG("WriteMetaInfo");
-  target_proto->set_thread_id(meta_info.thread_id);
+  target_proto->set_tid(meta_info.thread_id);
   target_proto->set_pre_submission_cpu_timestamp(meta_info.pre_submission_cpu_timestamp);
   target_proto->set_post_submission_cpu_timestamp(meta_info.post_submission_cpu_timestamp);
 }
