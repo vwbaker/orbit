@@ -12,6 +12,7 @@
 
 namespace orbit_producer {
 
+// This abstract class offers the subclasses methods to communicate with ProducerSideService.
 class CaptureEventProducer {
  public:
   // Pure virtual destructor, but still with definition (in .cpp file), makes this class abstract.

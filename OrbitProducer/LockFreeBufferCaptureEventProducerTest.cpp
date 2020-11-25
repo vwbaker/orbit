@@ -93,7 +93,6 @@ TEST_F(LockFreeBufferCaptureEventProducerTest, EnqueueIntermediateEventIfCapturi
 
   EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(0);
   EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(1);
-
   fake_service->SendStopCaptureCommand();
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_FALSE(buffer_producer->IsCapturing());
@@ -131,7 +130,6 @@ TEST_F(LockFreeBufferCaptureEventProducerTest, EnqueueIntermediateEvent) {
 
   EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(0);
   EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(1);
-
   fake_service->SendStopCaptureCommand();
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_FALSE(buffer_producer->IsCapturing());

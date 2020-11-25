@@ -30,6 +30,11 @@ message ReceiveCommandsAndSendEventsResponse {
   }
 }
 
+// This service offers a channel to send CaptureEvents
+// from external producers to OrbitService.
+// This is done with a single bi-directional streaming RPC
+// on which CaptureEvents and AllEventsSent notifications are sent,
+// and on which Start/StopCaptureCommands are received.
 service ProducerSideService {
   rpc ReceiveCommandsAndSendEvents(stream ReceiveCommandsAndSendEventsRequest)
       returns (stream ReceiveCommandsAndSendEventsResponse) {}
