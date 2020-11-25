@@ -253,7 +253,7 @@ void CaptureEventProcessor::ProcessGpuJob(const GpuJob& gpu_job) {
 
 void CaptureEventProcessor::ProcessGpuQueueSubmission(
     const GpuQueueSubmission& gpu_queue_submission) {
-  int32_t thread_id = gpu_queue_submission.meta_info().thread_id();
+  int32_t thread_id = gpu_queue_submission.meta_info().tid();
   uint64_t pre_submission_cpu_timestamp =
       gpu_queue_submission.meta_info().pre_submission_cpu_timestamp();
   uint64_t post_submission_cpu_timestamp =
@@ -532,6 +532,8 @@ void CaptureEventProcessor::ProcessGpuCommandBuffers(
   constexpr const char* kCommandBufferLabel = "command buffer";
   uint64_t command_buffer_text_key = GetStringHashAndSendToListenerIfNecessary(kCommandBufferLabel);
 
+  int32_t thread_id = gpu_queue_submission.meta_info().tid();
+
   for (const auto& submit_info : gpu_queue_submission.submit_infos()) {
     for (const auto& command_buffer : submit_info.command_buffers()) {
       CHECK(first_command_buffer != std::nullopt);
@@ -545,7 +547,7 @@ void CaptureEventProcessor::ProcessGpuCommandBuffers(
       command_buffer_timer.set_depth((matching_gpu_job.depth() * 2) + 1);
       command_buffer_timer.set_timeline_hash(timeline_hash);
       command_buffer_timer.set_processor(-1);
-      command_buffer_timer.set_thread_id(gpu_queue_submission.meta_info().thread_id());
+      command_buffer_timer.set_thread_id(thread_id);
       command_buffer_timer.set_type(TimerInfo::kGpuCommandBuffer);
       command_buffer_timer.set_user_data_key(command_buffer_text_key);
       capture_listener_->OnTimer(command_buffer_timer);
@@ -560,7 +562,7 @@ void CaptureEventProcessor::ProcessGpuDebugMarkers(
   uint64_t timeline_marker_hash = GetStringHashAndSendToListenerIfNecessary(timeline_marker);
 
   const auto& submission_meta_info = gpu_queue_submission.meta_info();
-  const int32_t submission_thread_id = submission_meta_info.thread_id();
+  const int32_t submission_thread_id = submission_meta_info.tid();
   uint64_t submission_pre_submission_cpu_timestamp =
       submission_meta_info.pre_submission_cpu_timestamp();
   uint64_t submission_post_submission_cpu_timestamp =
@@ -577,7 +579,7 @@ void CaptureEventProcessor::ProcessGpuDebugMarkers(
     if (completed_marker.has_begin_marker()) {
       const auto& begin_marker_info = completed_marker.begin_marker();
       const auto& begin_marker_meta_info = begin_marker_info.meta_info();
-      const int32_t begin_marker_thread_id = begin_marker_meta_info.thread_id();
+      const int32_t begin_marker_thread_id = begin_marker_meta_info.tid();
       uint64_t begin_marker_post_submission_cpu_timestamp =
           begin_marker_meta_info.post_submission_cpu_timestamp();
       uint64_t begin_marker_pre_submission_cpu_timestamp =
@@ -611,7 +613,7 @@ void CaptureEventProcessor::ProcessGpuDebugMarkers(
         marker_timer.set_start(completed_marker.begin_marker().gpu_timestamp_ns() +
                                matching_begin_job->gpu_hardware_start_time_ns() -
                                begin_submission_first_command_buffer->begin_gpu_timestamp_ns());
-        if (begin_marker_thread_id == gpu_queue_submission.meta_info().thread_id()) {
+        if (begin_marker_thread_id == gpu_queue_submission.meta_info().tid()) {
           marker_timer.set_thread_id(begin_marker_thread_id);
         }
 
