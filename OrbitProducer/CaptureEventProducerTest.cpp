@@ -5,6 +5,8 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <thread>
+
 #include "FakeProducerSideService.h"
 #include "OrbitProducer/CaptureEventProducer.h"
 #include "absl/strings/str_format.h"
@@ -39,19 +41,20 @@ class CaptureEventProducerImpl : public CaptureEventProducer {
 class CaptureEventProducerTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    static const std::string kUnixDomainSocketPath = "./orbit-producer-tests-socket";
+    static const std::string kUnixDomainSocketPath = "./capture-event-producer-test-socket";
 
     grpc::ServerBuilder builder;
     builder.AddListeningPort(absl::StrFormat("unix:%s", kUnixDomainSocketPath),
                              grpc::InsecureServerCredentials());
 
     fake_service.emplace();
-    builder.RegisterService(&fake_service.value());
+    builder.RegisterService(&*fake_service);
     fake_server = builder.BuildAndStart();
     ASSERT_NE(fake_server, nullptr);
 
     producer.emplace();
-    ASSERT_TRUE(producer->ConnectAndStart(kUnixDomainSocketPath));
+    bool connected_and_started = producer->ConnectAndStart(kUnixDomainSocketPath);
+    ASSERT_TRUE(connected_and_started);
 
     // Leave some time for the ReceiveCommandsAndSendEvents RPC to actually happen.
     std::this_thread::sleep_for(std::chrono::milliseconds(50));

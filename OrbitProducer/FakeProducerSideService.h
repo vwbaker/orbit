@@ -19,6 +19,7 @@ class FakeProducerSideService : public orbit_grpc_protos::ProducerSideService::S
                                   ::orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest>* stream)
       override {
     EXPECT_EQ(context_, nullptr);
+    EXPECT_EQ(stream_, nullptr);
     context_ = context;
     stream_ = stream;
 
@@ -48,7 +49,7 @@ class FakeProducerSideService : public orbit_grpc_protos::ProducerSideService::S
     orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse command;
     command.mutable_start_capture_command();
     bool written = stream_->Write(command);
-    EXPECT_EQ(written, true);
+    EXPECT_TRUE(written);
   }
 
   void SendStopCaptureCommand() {
@@ -56,7 +57,7 @@ class FakeProducerSideService : public orbit_grpc_protos::ProducerSideService::S
     orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse command;
     command.mutable_stop_capture_command();
     bool written = stream_->Write(command);
-    EXPECT_EQ(written, true);
+    EXPECT_TRUE(written);
   }
 
   void FinishRpc() {

@@ -44,9 +44,9 @@ target_sources(OrbitServiceLib PRIVATE
         ServiceUtils.cpp
         ServiceUtils.h)
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-  set_target_properties(OrbitServiceLib PROPERTIES COMPILE_FLAGS /wd4127)
-endif()
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    set_target_properties(OrbitServiceLib PROPERTIES COMPILE_FLAGS /wd4127)
+endif ()
 
 target_include_directories(OrbitServiceLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -69,11 +69,13 @@ strip_symbols(OrbitService)
 add_executable(OrbitServiceTests)
 target_compile_options(OrbitServiceTests PRIVATE ${STRICT_COMPILE_FLAGS})
 
-target_sources(OrbitServiceTests PRIVATE ProcessListTest.cpp
-                                         ProcessTest.cpp
-                                         ServiceUtilsTest.cpp)
+target_sources(OrbitServiceTests PRIVATE
+        ProcessListTest.cpp
+        ProcessTest.cpp
+        ProducerSideServiceImplTest.cpp
+        ServiceUtilsTest.cpp)
 
-target_link_libraries(OrbitServiceTests PRIVATE 
+target_link_libraries(OrbitServiceTests PRIVATE
         OrbitServiceLib
         GTest::Main)
 
@@ -84,5 +86,5 @@ add_custom_command(TARGET OrbitServiceTests POST_BUILD
 register_test(OrbitServiceTests PROPERTIES TIMEOUT 10)
 
 add_fuzzer(OrbitServiceUtilsFindSymbolsFilePathFuzzer
-           OrbitServiceUtilsFindSymbolsFilePathFuzzer.cpp)
+        OrbitServiceUtilsFindSymbolsFilePathFuzzer.cpp)
 target_link_libraries(OrbitServiceUtilsFindSymbolsFilePathFuzzer PRIVATE OrbitServiceLib)
