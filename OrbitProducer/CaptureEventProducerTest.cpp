@@ -5,7 +5,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "OrbitBase/Logging.h"
+#include "FakeProducerSideService.h"
 #include "OrbitProducer/CaptureEventProducer.h"
 #include "absl/strings/str_format.h"
 #include "grpcpp/grpcpp.h"
@@ -19,71 +19,6 @@ using orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse;
 namespace orbit_producer {
 
 namespace {
-
-class FakeProducerSideService : public orbit_grpc_protos::ProducerSideService::Service {
- public:
-  grpc::Status ReceiveCommandsAndSendEvents(
-      ::grpc::ServerContext* context,
-      ::grpc::ServerReaderWriter< ::orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse,
-                                  ::orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest>* stream)
-      override {
-    EXPECT_EQ(context_, nullptr);
-    context_ = context;
-    stream_ = stream;
-
-    ReceiveCommandsAndSendEventsRequest request;
-    while (stream->Read(&request)) {
-      EXPECT_NE(request.event_case(), ReceiveCommandsAndSendEventsRequest::EVENT_NOT_SET);
-      switch (request.event_case()) {
-        case ReceiveCommandsAndSendEventsRequest::kBufferedCaptureEvents:
-          OnCaptureEventsReceived();
-          break;
-        case ReceiveCommandsAndSendEventsRequest::kAllEventsSent:
-          OnAllEventsSentReceived();
-          break;
-        case ReceiveCommandsAndSendEventsRequest::EVENT_NOT_SET:
-          break;
-      }
-    }
-
-    context_ = nullptr;
-    stream_ = nullptr;
-    return grpc::Status::OK;
-  }
-
-  void SendStartCaptureCommand() {
-    ASSERT_NE(stream_, nullptr);
-    orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse command;
-    command.mutable_start_capture_command();
-    bool written = stream_->Write(command);
-    EXPECT_EQ(written, true);
-  }
-
-  void SendStopCaptureCommand() {
-    ASSERT_NE(stream_, nullptr);
-    orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse command;
-    command.mutable_stop_capture_command();
-    bool written = stream_->Write(command);
-    EXPECT_EQ(written, true);
-  }
-
-  void Done() {
-    if (context_ != nullptr) {
-      context_->TryCancel();
-      context_ = nullptr;
-      EXPECT_NE(stream_, nullptr);
-      stream_ = nullptr;
-    }
-  }
-
-  MOCK_METHOD(void, OnCaptureEventsReceived, (), ());
-  MOCK_METHOD(void, OnAllEventsSentReceived, (), ());
-
- private:
-  grpc::ServerContext* context_ = nullptr;
-  grpc::ServerReaderWriter<ReceiveCommandsAndSendEventsResponse,
-                           ReceiveCommandsAndSendEventsRequest>* stream_ = nullptr;
-};
 
 class CaptureEventProducerImpl : public CaptureEventProducer {
  public:

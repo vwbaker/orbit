@@ -30,7 +30,8 @@ add_executable(OrbitProducerTests)
 target_compile_options(OrbitProducerTests PRIVATE ${STRICT_COMPILE_FLAGS})
 
 target_sources(OrbitProducerTests PRIVATE
-        CaptureEventProducerTest.cpp)
+        CaptureEventProducerTest.cpp
+        FakeProducerSideService.h)
 
 target_link_libraries(OrbitProducerTests PRIVATE
         OrbitProducer
