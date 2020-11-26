@@ -22,7 +22,6 @@ target_sources(OrbitVulkanLayer PRIVATE
         LayerLogic.h
         QueueManager.cpp
         QueueManager.h
-        SubmissionTracker.cpp
         SubmissionTracker.h
         TimerQueryPool.h
         VulkanLayerProducer.h

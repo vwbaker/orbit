@@ -216,7 +216,8 @@ class LayerLogic {
   DispatchTable dispatch_table_;
   DeviceManager<DispatchTable> device_manager_;
   TimerQueryPool<DispatchTable> timer_query_pool_;
-  SubmissionTracker command_buffer_manager_;
+  SubmissionTracker<DispatchTable, DeviceManager<DispatchTable>, TimerQueryPool<DispatchTable>>
+      command_buffer_manager_;
   QueueManager queue_manager_;
 
   static constexpr uint32_t kNumTimerQuerySlots = 65536;
