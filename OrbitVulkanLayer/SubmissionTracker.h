@@ -19,9 +19,6 @@
 
 namespace orbit_vulkan_layer {
 
-namespace internal {
-enum MarkerType { kDebugMarkerBegin = 0, kDebugMarkerEnd };
-
 struct Color {
   // Values are all in range [0.f, 1.f.]
   float red;
@@ -30,58 +27,7 @@ struct Color {
   float alpha;
 };
 
-struct SubmissionMetaInformation {
-  uint64_t pre_submission_cpu_timestamp;
-  uint64_t post_submission_cpu_timestamp;
-  int32_t thread_id;
-};
-
-struct Marker {
-  MarkerType type;
-  std::optional<uint32_t> slot_index;
-  std::string text;
-  Color color;
-};
-
-struct SubmittedMarker {
-  SubmissionMetaInformation meta_information;
-  uint32_t slot_index;
-};
-
-struct MarkerState {
-  std::optional<SubmittedMarker> begin_info;
-  std::optional<SubmittedMarker> end_info;
-  std::string text;
-  Color color;
-  size_t depth;
-};
-
-struct QueueMarkerState {
-  std::stack<MarkerState> marker_stack;
-};
-
-struct CommandBufferState {
-  std::optional<uint32_t> command_buffer_begin_slot_index;
-  std::optional<uint32_t> command_buffer_end_slot_index;
-  std::vector<Marker> markers;
-};
-
-struct SubmittedCommandBuffer {
-  uint32_t command_buffer_begin_slot_index;
-  uint32_t command_buffer_end_slot_index;
-};
-
-struct SubmitInfo {
-  std::vector<SubmittedCommandBuffer> command_buffers;
-};
-
-struct QueueSubmission {
-  SubmissionMetaInformation meta_information;
-  std::vector<SubmitInfo> submit_infos;
-  std::vector<MarkerState> completed_markers;
-  uint32_t num_begin_markers = 0;
-};
-}  // namespace internal
+namespace internal {}  // namespace internal
 
 /*
  * This class ultimately is responsible to track command buffer and debug marker timings.
@@ -102,11 +48,13 @@ struct QueueSubmission {
  */
 class SubmissionTracker {
  public:
-  explicit SubmissionTracker(DispatchTable* dispatch_table,
+  explicit SubmissionTracker(uint32_t max_local_marker_depth_per_command_buffer,
+                             DispatchTable* dispatch_table,
                              TimerQueryPool<DispatchTable>* timer_query_pool,
                              DeviceManager<DispatchTable>* device_manager,
                              std::unique_ptr<VulkanLayerProducer>* vulkan_layer_producer)
-      : dispatch_table_(dispatch_table),
+      : max_local_marker_depth_per_command_buffer_(max_local_marker_depth_per_command_buffer),
+        dispatch_table_(dispatch_table),
         timer_query_pool_(timer_query_pool),
         device_manager_(device_manager),
         vulkan_layer_producer_{vulkan_layer_producer} {
@@ -121,8 +69,7 @@ class SubmissionTracker {
 
   void MarkCommandBufferEnd(VkCommandBuffer command_buffer);
 
-  void MarkDebugMarkerBegin(VkCommandBuffer command_buffer, const char* text,
-                            internal::Color color);
+  void MarkDebugMarkerBegin(VkCommandBuffer command_buffer, const char* text, Color color);
   void MarkDebugMarkerEnd(VkCommandBuffer command_buffer);
 
   void PersistSubmitInformation(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits);
@@ -135,25 +82,82 @@ class SubmissionTracker {
   void ResetCommandPool(VkCommandPool command_pool);
 
  private:
+  enum class MarkerType { kDebugMarkerBegin = 0, kDebugMarkerEnd };
+
+  struct SubmissionMetaInformation {
+    uint64_t pre_submission_cpu_timestamp;
+    uint64_t post_submission_cpu_timestamp;
+    int32_t thread_id;
+  };
+
+  struct Marker {
+    MarkerType type;
+    std::optional<uint32_t> slot_index;
+    std::string text;
+    Color color;
+  };
+
+  struct SubmittedMarker {
+    SubmissionMetaInformation meta_information;
+    uint32_t slot_index;
+  };
+
+  struct MarkerState {
+    std::optional<SubmittedMarker> begin_info;
+    std::optional<SubmittedMarker> end_info;
+    std::string text;
+    Color color;
+    size_t depth;
+  };
+
+  struct QueueMarkerState {
+    std::stack<MarkerState> marker_stack;
+  };
+
+  struct CommandBufferState {
+    std::optional<uint32_t> command_buffer_begin_slot_index;
+    std::optional<uint32_t> command_buffer_end_slot_index;
+    std::vector<Marker> markers;
+    uint32_t local_marker_stack_size;
+  };
+
+  struct SubmittedCommandBuffer {
+    uint32_t command_buffer_begin_slot_index;
+    uint32_t command_buffer_end_slot_index;
+  };
+
+  struct SubmitInfo {
+    std::vector<SubmittedCommandBuffer> command_buffers;
+  };
+
+  struct QueueSubmission {
+    SubmissionMetaInformation meta_information;
+    std::vector<SubmitInfo> submit_infos;
+    std::vector<MarkerState> completed_markers;
+    uint32_t num_begin_markers = 0;
+  };
+
   uint32_t RecordTimestamp(VkCommandBuffer command_buffer,
                            VkPipelineStageFlagBits pipeline_stage_flags);
 
-  std::vector<internal::QueueSubmission> PullCompletedSubmissions(VkDevice device,
-                                                                  VkQueryPool query_pool);
+  std::vector<QueueSubmission> PullCompletedSubmissions(VkDevice device, VkQueryPool query_pool);
 
   uint64_t QueryGpuTimestampNs(VkDevice device, VkQueryPool query_pool, uint32_t slot_index,
                                float timestamp_period);
 
-  static void WriteMetaInfo(const internal::SubmissionMetaInformation& meta_info,
+  static void WriteMetaInfo(const SubmissionMetaInformation& meta_info,
                             orbit_grpc_protos::GpuQueueSubmissionMetaInfo* target_proto);
+
+  // We use 0 to disable filtering of markers.
+  uint32_t max_local_marker_depth_per_command_buffer_ = 0;
 
   absl::Mutex mutex_;
   absl::flat_hash_map<VkCommandPool, absl::flat_hash_set<VkCommandBuffer>> pool_to_command_buffers_;
   absl::flat_hash_map<VkCommandBuffer, VkDevice> command_buffer_to_device_;
 
-  absl::flat_hash_map<VkCommandBuffer, internal::CommandBufferState> command_buffer_to_state_;
-  absl::flat_hash_map<VkQueue, std::vector<internal::QueueSubmission>> queue_to_submissions_;
-  absl::flat_hash_map<VkQueue, internal::QueueMarkerState> queue_to_markers_;
+  absl::flat_hash_map<VkCommandBuffer, CommandBufferState> command_buffer_to_state_;
+  absl::flat_hash_map<VkQueue, std::vector<QueueSubmission>> queue_to_submissions_;
+  absl::flat_hash_map<VkQueue, QueueMarkerState> queue_to_markers_;
 
   DispatchTable* dispatch_table_;
   TimerQueryPool<DispatchTable>* timer_query_pool_;

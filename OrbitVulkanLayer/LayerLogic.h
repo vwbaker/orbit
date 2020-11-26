@@ -37,10 +37,8 @@ class LayerLogic {
   LayerLogic()
       : device_manager_(&dispatch_table_),
         timer_query_pool_(&dispatch_table_, kNumTimerQuerySlots),
-        command_buffer_manager_(&dispatch_table_, &timer_query_pool_, &device_manager_,
-                                &vulkan_layer_producer_) {
-    LOG("LayerLogic");
-  }
+        command_buffer_manager_(0, &dispatch_table_, &timer_query_pool_, &device_manager_,
+                                &vulkan_layer_producer_) {}
 
   ~LayerLogic() { CloseVulkanLayerProducerIfNecessary(); }
 
@@ -51,17 +49,14 @@ class LayerLogic {
                               const VkAllocationCallbacks* allocator, VkInstance* instance);
 
   [[nodiscard]] PFN_vkVoidFunction CallGetDeviceProcAddr(VkDevice device, const char* name) {
-    LOG("CallGetDeviceProcAddr(%s)", name);
     return dispatch_table_.GetDeviceProcAddr(device)(device, name);
   }
 
   [[nodiscard]] PFN_vkVoidFunction CallGetInstanceProcAddr(VkInstance instance, const char* name) {
-    LOG("CallGetInstanceProcAddr(%s)", name);
     return dispatch_table_.GetInstanceProcAddr(instance)(instance, name);
   }
 
   void CallAndPostDestroyInstance(VkInstance instance, const VkAllocationCallbacks* allocator) {
-    LOG("CallAndPostDestroyInstance");
     PFN_vkDestroyInstance destroy_instance_function = dispatch_table_.DestroyInstance(instance);
     CHECK(destroy_instance_function != nullptr);
     dispatch_table_.RemoveInstanceDispatchTable(instance);
@@ -72,7 +67,6 @@ class LayerLogic {
   }
 
   void CallAndPostDestroyDevice(VkDevice device, const VkAllocationCallbacks* allocator) {
-    LOG("CallAndPostDestroyDevice");
     PFN_vkDestroyDevice destroy_device_function = dispatch_table_.DestroyDevice(device);
     CHECK(destroy_device_function != nullptr);
     device_manager_.UntrackLogicalDevice(device);
@@ -92,14 +86,12 @@ class LayerLogic {
                                                                 const char* layer_name,
                                                                 uint32_t* property_count,
                                                                 VkExtensionProperties* properties) {
-    LOG("CallEnumerateDeviceExtensionProperties");
     return dispatch_table_.EnumerateDeviceExtensionProperties(physical_device)(
         physical_device, layer_name, property_count, properties);
   }
 
   [[nodiscard]] VkResult CallResetCommandPool(VkDevice device, VkCommandPool command_pool,
                                               VkCommandPoolResetFlags flags) {
-    LOG("CallResetCommandPool");
     return dispatch_table_.ResetCommandPool(device)(device, command_pool, flags);
   }
   void PostCallResetCommandPool(VkDevice device, VkCommandPool command_pool,
@@ -107,7 +99,6 @@ class LayerLogic {
   [[nodiscard]] VkResult CallAllocateCommandBuffers(
       VkDevice device, const VkCommandBufferAllocateInfo* allocate_info,
       VkCommandBuffer* command_buffers) {
-    LOG("CallAllocateCommandBuffers");
     return dispatch_table_.AllocateCommandBuffers(device)(device, allocate_info, command_buffers);
   }
   void PostCallAllocateCommandBuffers(VkDevice device,
@@ -117,7 +108,6 @@ class LayerLogic {
   void CallFreeCommandBuffers(VkDevice device, VkCommandPool command_pool,
                               uint32_t command_buffer_count,
                               const VkCommandBuffer* command_buffers) {
-    LOG("CallFreeCommandBuffers");
     return dispatch_table_.FreeCommandBuffers(device)(device, command_pool, command_buffer_count,
                                                       command_buffers);
   }
@@ -126,7 +116,6 @@ class LayerLogic {
                                   const VkCommandBuffer* command_buffers);
   [[nodiscard]] VkResult CallBeginCommandBuffer(VkCommandBuffer command_buffer,
                                                 const VkCommandBufferBeginInfo* begin_info) {
-    LOG("CallBeginCommandBuffer");
     return dispatch_table_.BeginCommandBuffer(command_buffer)(command_buffer, begin_info);
   }
   void PostCallBeginCommandBuffer(VkCommandBuffer command_buffer,
@@ -134,27 +123,23 @@ class LayerLogic {
 
   void PreCallEndCommandBuffer(VkCommandBuffer command_buffer);
   [[nodiscard]] VkResult CallEndCommandBuffer(VkCommandBuffer command_buffer) {
-    LOG("CallEndCommandBuffer");
     return dispatch_table_.EndCommandBuffer(command_buffer)(command_buffer);
   }
 
   void PreCallResetCommandBuffer(VkCommandBuffer command_buffer, VkCommandBufferResetFlags flags);
   [[nodiscard]] VkResult CallResetCommandBuffer(VkCommandBuffer command_buffer,
                                                 VkCommandBufferResetFlags flags) {
-    LOG("CallResetCommandBuffer");
     return dispatch_table_.ResetCommandBuffer(command_buffer)(command_buffer, flags);
   }
 
   void CallGetDeviceQueue(VkDevice device, uint32_t queue_family_index, uint32_t queue_index,
                           VkQueue* queue) {
-    LOG("CallGetDeviceQueue");
     return dispatch_table_.GetDeviceQueue(device)(device, queue_family_index, queue_index, queue);
   }
   void PostCallGetDeviceQueue(VkDevice device, uint32_t queue_family_index, uint32_t queue_index,
                               VkQueue* queue);
 
   void CallGetDeviceQueue2(VkDevice device, const VkDeviceQueueInfo2* queue_info, VkQueue* queue) {
-    LOG("CallGetDeviceQueue2");
     return dispatch_table_.GetDeviceQueue2(device)(device, queue_info, queue);
   }
   void PostCallGetDeviceQueue2(VkDevice device, const VkDeviceQueueInfo2* queue_info,
@@ -164,21 +149,18 @@ class LayerLogic {
                           VkFence fence);
   [[nodiscard]] VkResult CallQueueSubmit(VkQueue queue, uint32_t submit_count,
                                          const VkSubmitInfo* submits, VkFence fence) {
-    LOG("CallQueueSubmit");
     return dispatch_table_.QueueSubmit(queue)(queue, submit_count, submits, fence);
   }
   void PostCallQueueSubmit(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits,
                            VkFence fence);
 
   [[nodiscard]] VkResult CallQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* present_info) {
-    LOG("CallQueuePresentKHR");
     return dispatch_table_.QueuePresentKHR(queue)(queue, present_info);
   }
   void PostCallQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* present_info);
 
   void CallCmdBeginDebugUtilsLabelEXT(VkCommandBuffer command_buffer,
                                       const VkDebugUtilsLabelEXT* label_info) {
-    LOG("CallCmdBeginDebugUtilsLabelEXT");
     if (dispatch_table_.IsDebugUtilsExtensionSupported(command_buffer)) {
       dispatch_table_.CmdBeginDebugUtilsLabelEXT(command_buffer)(command_buffer, label_info);
     }
@@ -188,7 +170,6 @@ class LayerLogic {
 
   void PreCallCmdEndDebugUtilsLabelEXT(VkCommandBuffer command_buffer);
   void CallCmdEndDebugUtilsLabelEXT(VkCommandBuffer command_buffer) {
-    LOG("CallCmdEndDebugUtilsLabelEXT");
     if (dispatch_table_.IsDebugUtilsExtensionSupported(command_buffer)) {
       dispatch_table_.CmdEndDebugUtilsLabelEXT(command_buffer)(command_buffer);
     }
@@ -196,7 +177,6 @@ class LayerLogic {
 
   void CallCmdDebugMarkerBeginEXT(VkCommandBuffer command_buffer,
                                   const VkDebugMarkerMarkerInfoEXT* marker_info) {
-    LOG("CallCmdDebugMarkerBeginEXT");
     if (dispatch_table_.IsDebugMarkerExtensionSupported(command_buffer)) {
       dispatch_table_.CmdDebugMarkerBeginEXT(command_buffer)(command_buffer, marker_info);
     }
@@ -206,7 +186,6 @@ class LayerLogic {
 
   void PreCallCmdDebugMarkerEndEXT(VkCommandBuffer command_buffer);
   void CallCmdDebugMarkerEndEXT(VkCommandBuffer command_buffer) {
-    LOG("CallCmdDebugMarkerEndEXT");
     if (dispatch_table_.IsDebugMarkerExtensionSupported(command_buffer)) {
       dispatch_table_.CmdDebugMarkerEndEXT(command_buffer)(command_buffer);
     }

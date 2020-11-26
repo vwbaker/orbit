@@ -71,8 +71,7 @@ void SubmissionTracker::MarkCommandBufferEnd(VkCommandBuffer command_buffer) {
   {
     absl::ReaderMutexLock lock(&mutex_);
     CHECK(command_buffer_to_state_.contains(command_buffer));
-    internal::CommandBufferState& command_buffer_state =
-        command_buffer_to_state_.at(command_buffer);
+    CommandBufferState& command_buffer_state = command_buffer_to_state_.at(command_buffer);
     if (!command_buffer_state.command_buffer_begin_slot_index.has_value()) {
       return;
     }
@@ -85,8 +84,7 @@ void SubmissionTracker::MarkCommandBufferEnd(VkCommandBuffer command_buffer) {
   {
     absl::ReaderMutexLock lock(&mutex_);
     CHECK(command_buffer_to_state_.contains(command_buffer));
-    internal::CommandBufferState& command_buffer_state =
-        command_buffer_to_state_.at(command_buffer);
+    CommandBufferState& command_buffer_state = command_buffer_to_state_.at(command_buffer);
     // Writing to this field is safe, as there can't be any operation on this command buffer
     // in parallel.
     command_buffer_state.command_buffer_end_slot_index = std::make_optional(slot_index);
@@ -94,18 +92,21 @@ void SubmissionTracker::MarkCommandBufferEnd(VkCommandBuffer command_buffer) {
 }
 
 void SubmissionTracker::MarkDebugMarkerBegin(VkCommandBuffer command_buffer, const char* text,
-                                             internal::Color color) {
+                                             Color color) {
   CHECK(text != nullptr);
+  bool too_many_markers;
   {
     absl::WriterMutexLock lock(&mutex_);
     CHECK(command_buffer_to_state_.contains(command_buffer));
-    internal::CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
-    internal::Marker marker{
-        .type = internal::MarkerType::kDebugMarkerBegin, .text = std::string(text), .color = color};
+    CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
+    Marker marker{.type = MarkerType::kDebugMarkerBegin, .text = std::string(text), .color = color};
     state.markers.emplace_back(std::move(marker));
+    ++state.local_marker_stack_size;
+    too_many_markers = max_local_marker_depth_per_command_buffer_ > 0 &&
+                       state.local_marker_stack_size > max_local_marker_depth_per_command_buffer_;
   }
 
-  if (!IsCapturing()) {
+  if (!IsCapturing() || too_many_markers) {
     return;
   }
 
@@ -114,21 +115,28 @@ void SubmissionTracker::MarkDebugMarkerBegin(VkCommandBuffer command_buffer, con
   {
     absl::WriterMutexLock lock(&mutex_);
     CHECK(command_buffer_to_state_.contains(command_buffer));
-    internal::CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
+    CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
     state.markers.back().slot_index = std::make_optional(slot_index);
   }
 }
 
 void SubmissionTracker::MarkDebugMarkerEnd(VkCommandBuffer command_buffer) {
+  bool too_many_markers;
   {
     absl::WriterMutexLock lock(&mutex_);
     CHECK(command_buffer_to_state_.contains(command_buffer));
-    internal::CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
-    internal::Marker marker{.type = internal::MarkerType::kDebugMarkerEnd};
+    CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
+    Marker marker{.type = MarkerType::kDebugMarkerEnd};
     state.markers.emplace_back(std::move(marker));
+    too_many_markers = max_local_marker_depth_per_command_buffer_ > 0 &&
+                       state.local_marker_stack_size > max_local_marker_depth_per_command_buffer_;
+    // We might see more "ends" then "begins", as the "begins" can be on a different command buffer
+    if (state.local_marker_stack_size != 0) {
+      --state.local_marker_stack_size;
+    }
   }
 
-  if (!IsCapturing()) {
+  if (!IsCapturing() || too_many_markers) {
     return;
   }
 
@@ -136,7 +144,7 @@ void SubmissionTracker::MarkDebugMarkerEnd(VkCommandBuffer command_buffer) {
   {
     absl::WriterMutexLock lock(&mutex_);
     CHECK(command_buffer_to_state_.contains(command_buffer));
-    internal::CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
+    CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
     state.markers.back().slot_index = std::make_optional(slot_index);
   }
 }
@@ -151,23 +159,23 @@ void SubmissionTracker::PersistSubmitInformation(VkQueue queue, uint32_t submit_
     return;
   }
 
-  internal::QueueSubmission queue_submission = {};
+  QueueSubmission queue_submission = {};
 
   absl::WriterMutexLock lock(&mutex_);
   for (uint32_t submit_index = 0; submit_index < submit_count; ++submit_index) {
     VkSubmitInfo submit_info = submits[submit_index];
     queue_submission.submit_infos.emplace_back();
-    internal::SubmitInfo& submitted_submit_info = queue_submission.submit_infos.back();
+    SubmitInfo& submitted_submit_info = queue_submission.submit_infos.back();
     for (uint32_t command_buffer_index = 0; command_buffer_index < submit_info.commandBufferCount;
          ++command_buffer_index) {
       VkCommandBuffer command_buffer = submit_info.pCommandBuffers[command_buffer_index];
       CHECK(command_buffer_to_state_.contains(command_buffer));
-      internal::CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
+      CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
       if (!state.command_buffer_begin_slot_index.has_value()) {
         continue;
       }
       CHECK(state.command_buffer_end_slot_index.has_value());
-      internal::SubmittedCommandBuffer submitted_command_buffer{
+      SubmittedCommandBuffer submitted_command_buffer{
           .command_buffer_begin_slot_index = state.command_buffer_begin_slot_index.value(),
           .command_buffer_end_slot_index = state.command_buffer_end_slot_index.value()};
       submitted_submit_info.command_buffers.emplace_back(submitted_command_buffer);
@@ -192,8 +200,8 @@ void SubmissionTracker::DoPostSubmitQueue(VkQueue queue, uint32_t submit_count,
       queue_to_markers_[queue] = {};
     }
     CHECK(queue_to_markers_.contains(queue));
-    internal::QueueMarkerState& markers = queue_to_markers_.at(queue);
-    internal::QueueSubmission* queue_submission = nullptr;
+    QueueMarkerState& markers = queue_to_markers_.at(queue);
+    QueueSubmission* queue_submission = nullptr;
 
     // TODO: What happens if we start capturing right between the pre- and post-submission.
     if (queue_to_submissions_.contains(queue) && IsCapturing()) {
@@ -207,28 +215,28 @@ void SubmissionTracker::DoPostSubmitQueue(VkQueue queue, uint32_t submit_count,
            ++command_buffer_index) {
         VkCommandBuffer command_buffer = submit_info.pCommandBuffers[command_buffer_index];
         CHECK(command_buffer_to_state_.contains(command_buffer));
-        for (const internal::Marker& marker : command_buffer_to_state_.at(command_buffer).markers) {
-          std::optional<internal::SubmittedMarker> submitted_marker = std::nullopt;
+        for (const Marker& marker : command_buffer_to_state_.at(command_buffer).markers) {
+          std::optional<SubmittedMarker> submitted_marker = std::nullopt;
           if (queue_submission != nullptr && marker.slot_index.has_value()) {
             submitted_marker = {.meta_information = queue_submission->meta_information,
                                 .slot_index = marker.slot_index.value()};
           }
 
           switch (marker.type) {
-            case internal::MarkerType::kDebugMarkerBegin: {
+            case MarkerType::kDebugMarkerBegin: {
               if (queue_submission != nullptr && marker.slot_index.has_value()) {
                 ++queue_submission->num_begin_markers;
               }
-              internal::MarkerState marker_state{.text = marker.text,
-                                                 .color = marker.color,
-                                                 .begin_info = submitted_marker,
-                                                 .depth = markers.marker_stack.size()};
+              MarkerState marker_state{.text = marker.text,
+                                       .color = marker.color,
+                                       .begin_info = submitted_marker,
+                                       .depth = markers.marker_stack.size()};
               markers.marker_stack.push(std::move(marker_state));
               break;
             }
 
-            case internal::MarkerType::kDebugMarkerEnd: {
-              internal::MarkerState marker_state = markers.marker_stack.top();
+            case MarkerType::kDebugMarkerEnd: {
+              MarkerState marker_state = markers.marker_stack.top();
               markers.marker_stack.pop();
               if (queue_submission != nullptr && marker.slot_index.has_value()) {
                 marker_state.end_info = submitted_marker;
@@ -247,8 +255,7 @@ void SubmissionTracker::DoPostSubmitQueue(VkQueue queue, uint32_t submit_count,
 
 void SubmissionTracker::CompleteSubmits(VkDevice device) {
   VkQueryPool query_pool = timer_query_pool_->GetQueryPool(device);
-  std::vector<internal::QueueSubmission> completed_submissions =
-      PullCompletedSubmissions(device, query_pool);
+  std::vector<QueueSubmission> completed_submissions = PullCompletedSubmissions(device, query_pool);
 
   if (completed_submissions.empty()) {
     return;
@@ -330,15 +337,15 @@ void SubmissionTracker::CompleteSubmits(VkDevice device) {
   timer_query_pool_->ResetQuerySlots(device, query_slots_to_reset);
 }
 
-std::vector<internal::QueueSubmission> SubmissionTracker::PullCompletedSubmissions(
+std::vector<SubmissionTracker::QueueSubmission> SubmissionTracker::PullCompletedSubmissions(
     VkDevice device, VkQueryPool query_pool) {
-  std::vector<internal::QueueSubmission> completed_submissions;
+  std::vector<QueueSubmission> completed_submissions;
 
   absl::WriterMutexLock lock(&mutex_);
   for (auto& [unused_queue, queue_submissions] : queue_to_submissions_) {
     auto submission_it = queue_submissions.begin();
     while (submission_it != queue_submissions.end()) {
-      const internal::QueueSubmission& submission = *submission_it;
+      const QueueSubmission& submission = *submission_it;
       if (submission.submit_infos.empty()) {
         submission_it = queue_submissions.erase(submission_it);
         continue;
@@ -352,14 +359,13 @@ std::vector<internal::QueueSubmission> SubmissionTracker::PullCompletedSubmissio
       // submission.
       auto submit_info_reverse_it = submission.submit_infos.rbegin();
       while (submit_info_reverse_it != submission.submit_infos.rend()) {
-        const internal::SubmitInfo& submit_info = submission.submit_infos.back();
+        const SubmitInfo& submit_info = submission.submit_infos.back();
         if (submit_info.command_buffers.empty()) {
           ++submit_info_reverse_it;
           continue;
         }
         // We found our last command buffer, so lets check if its result is there:
-        const internal::SubmittedCommandBuffer& last_command_buffer =
-            submit_info.command_buffers.back();
+        const SubmittedCommandBuffer& last_command_buffer = submit_info.command_buffers.back();
         uint32_t check_slot_index_end = last_command_buffer.command_buffer_end_slot_index;
 
         static constexpr VkDeviceSize kResultStride = sizeof(uint64_t);
@@ -394,7 +400,7 @@ void SubmissionTracker::ResetCommandBuffer(VkCommandBuffer command_buffer) {
   if (!command_buffer_to_state_.contains(command_buffer)) {
     return;
   }
-  internal::CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
+  CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
   VkDevice device = command_buffer_to_device_.at(command_buffer);
   std::vector<uint32_t> marker_slots_to_rollback;
   if (state.command_buffer_begin_slot_index.has_value()) {
@@ -455,7 +461,7 @@ uint64_t SubmissionTracker::QueryGpuTimestampNs(VkDevice device, VkQueryPool que
   return static_cast<uint64_t>(static_cast<double>(timestamp) * timestamp_period);
 }
 
-void SubmissionTracker::WriteMetaInfo(const internal::SubmissionMetaInformation& meta_info,
+void SubmissionTracker::WriteMetaInfo(const SubmissionMetaInformation& meta_info,
                                       orbit_grpc_protos::GpuQueueSubmissionMetaInfo* target_proto) {
   target_proto->set_tid(meta_info.thread_id);
   target_proto->set_pre_submission_cpu_timestamp(meta_info.pre_submission_cpu_timestamp);

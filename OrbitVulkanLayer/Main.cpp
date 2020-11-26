@@ -330,7 +330,6 @@ VKAPI_ATTR VkResult VKAPI_CALL OrbitEnumerateDeviceExtensionProperties(
 
 ORBIT_EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL OrbitGetDeviceProcAddr(VkDevice device,
                                                                              const char* name) {
-  LOG("OrbitGetDeviceProcAddr - %s", name);
   // Functions available through GetInstanceProcAddr and GetDeviceProcAddr
   ORBIT_GETPROCADDR(GetDeviceProcAddr)
   ORBIT_GETPROCADDR(EnumerateDeviceLayerProperties)
@@ -362,7 +361,6 @@ ORBIT_EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL OrbitGetDeviceProcAddr(VkD
 
 ORBIT_EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL OrbitGetInstanceProcAddr(VkInstance instance,
                                                                                const char* name) {
-  LOG("OrbitGetInstanceProcAddr - %s", name);
   // Functions available only through GetInstanceProcAddr
   ORBIT_GETPROCADDR(GetInstanceProcAddr)
   ORBIT_GETPROCADDR(CreateInstance)
@@ -396,7 +394,6 @@ ORBIT_EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL OrbitGetInstanceProcAddr(V
   ORBIT_GETPROCADDR(CmdDebugMarkerBeginEXT)
   ORBIT_GETPROCADDR(CmdDebugMarkerEndEXT)
 
-  LOG("Fallback");
   return logic_.CallGetInstanceProcAddr(instance, name);
 }
 

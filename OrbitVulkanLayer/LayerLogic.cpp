@@ -11,7 +11,6 @@ namespace orbit_vulkan_layer {
 VkResult LayerLogic::PreCallAndCallCreateInstance(const VkInstanceCreateInfo* create_info,
                                                   const VkAllocationCallbacks* allocator,
                                                   VkInstance* instance) {
-  LOG("PreCallAndCallCreateInstance");
   InitVulkanLayerProducerIfNecessary();
 
   auto* layer_create_info = absl::bit_cast<VkLayerInstanceCreateInfo*>(create_info->pNext);
@@ -45,14 +44,11 @@ VkResult LayerLogic::PreCallAndCallCreateInstance(const VkInstanceCreateInfo* cr
 
 void LayerLogic::PostCallCreateInstance(const VkInstanceCreateInfo* /*create_info*/,
                                         const VkAllocationCallbacks* /*allocator*/,
-                                        VkInstance* /*instance*/) {
-  LOG("PostCallCreateInstance");
-}
+                                        VkInstance* /*instance*/) {}
 
 VkResult LayerLogic::PreCallAndCallCreateDevice(
     VkPhysicalDevice /*physical_device*/ physical_device, const VkDeviceCreateInfo* create_info,
     const VkAllocationCallbacks* allocator /*allocator*/, VkDevice* device) {
-  LOG("PreCallAndCallCreateDevice");
   auto* layer_create_info = absl::bit_cast<VkLayerDeviceCreateInfo*>(create_info->pNext);
 
   while (layer_create_info != nullptr &&
@@ -88,21 +84,18 @@ void LayerLogic::PostCallCreateDevice(VkPhysicalDevice physical_device,
                                       const VkDeviceCreateInfo* /*create_info*/,
                                       const VkAllocationCallbacks* /*allocator*/,
                                       VkDevice* device) {
-  LOG("PostCallCreateDevice");
   device_manager_.TrackLogicalDevice(physical_device, *device);
   timer_query_pool_.InitializeTimerQueryPool(*device);
 }
 
 void LayerLogic::PostCallResetCommandPool(VkDevice /*device*/, VkCommandPool command_pool,
                                           VkCommandPoolResetFlags /*flags*/) {
-  LOG("PostCallResetCommandPool");
   command_buffer_manager_.ResetCommandPool(command_pool);
 }
 
 void LayerLogic::PostCallAllocateCommandBuffers(VkDevice device,
                                                 const VkCommandBufferAllocateInfo* allocate_info,
                                                 VkCommandBuffer* command_buffers) {
-  LOG("PostCallAllocateCommandBuffers");
   VkCommandPool pool = allocate_info->commandPool;
   const uint32_t command_buffer_count = allocate_info->commandBufferCount;
   command_buffer_manager_.TrackCommandBuffers(device, pool, command_buffers, command_buffer_count);
@@ -111,67 +104,55 @@ void LayerLogic::PostCallAllocateCommandBuffers(VkDevice device,
 void LayerLogic::PostCallFreeCommandBuffers(VkDevice device, VkCommandPool command_pool,
                                             uint32_t command_buffer_count,
                                             const VkCommandBuffer* command_buffers) {
-  LOG("PostCallFreeCommandBuffers");
   command_buffer_manager_.UntrackCommandBuffers(device, command_pool, command_buffers,
                                                 command_buffer_count);
 }
 
 void LayerLogic::PostCallBeginCommandBuffer(VkCommandBuffer command_buffer,
                                             const VkCommandBufferBeginInfo* /*begin_info*/) {
-  LOG("PostCallBeginCommandBuffer");
   command_buffer_manager_.MarkCommandBufferBegin(command_buffer);
 }
 
 void LayerLogic::PreCallEndCommandBuffer(VkCommandBuffer command_buffer) {
-  LOG("PreCallEndCommandBuffer");
   command_buffer_manager_.MarkCommandBufferEnd(command_buffer);
 }
 
 void LayerLogic::PreCallResetCommandBuffer(VkCommandBuffer command_buffer,
                                            VkCommandBufferResetFlags /*flags*/) {
   command_buffer_manager_.ResetCommandBuffer(command_buffer);
-  LOG("PreCallResetCommandBuffer");
 }
 
 void LayerLogic::PreCallQueueSubmit(VkQueue queue, uint32_t submit_count,
                                     const VkSubmitInfo* submits, VkFence /*fence*/) {
-  LOG("PostCallQueueSubmit");
   command_buffer_manager_.PersistSubmitInformation(queue, submit_count, submits);
 }
 void LayerLogic::PostCallQueueSubmit(VkQueue queue, uint32_t submit_count,
                                      const VkSubmitInfo* submits, VkFence /*fence*/) {
-  LOG("PostCallQueueSubmit");
   command_buffer_manager_.DoPostSubmitQueue(queue, submit_count, submits);
 }
 
 void LayerLogic::PostCallQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* /*present_info*/) {
-  LOG("PostCallQueuePresentKHR");
   command_buffer_manager_.CompleteSubmits(queue_manager_.GetDeviceOfQueue(queue));
 }
 
 void LayerLogic::PostCallGetDeviceQueue(VkDevice device, uint32_t /*queue_family_index*/,
                                         uint32_t /*queue_index*/, VkQueue* queue) {
-  LOG("PostCallGetDeviceQueue");
   queue_manager_.TrackQueue(*queue, device);
 }
 void LayerLogic::PostCallGetDeviceQueue2(VkDevice device, const VkDeviceQueueInfo2* /*queue_info*/,
                                          VkQueue* queue) {
-  LOG("PostCallGetDeviceQueue2");
   queue_manager_.TrackQueue(*queue, device);
 }
 void LayerLogic::PostCallCmdBeginDebugUtilsLabelEXT(VkCommandBuffer /*command_buffer*/,
                                                     const VkDebugUtilsLabelEXT* /*label_info*/) {
-  LOG("PostCallCmdBeginDebugUtilsLabelEXT");
   CHECK(false);
 }
 void LayerLogic::PreCallCmdEndDebugUtilsLabelEXT(VkCommandBuffer /*command_buffer*/) {
-  LOG("PreCallCmdEndDebugUtilsLabelEXT");
   CHECK(false);
 }
 
 void LayerLogic::PostCallCmdDebugMarkerBeginEXT(VkCommandBuffer command_buffer,
                                                 const VkDebugMarkerMarkerInfoEXT* marker_info) {
-  LOG("PostCallCmdDebugMarkerBeginEXT");
   CHECK(marker_info != nullptr);
   command_buffer_manager_.MarkDebugMarkerBegin(command_buffer, marker_info->pMarkerName,
                                                {
@@ -183,7 +164,6 @@ void LayerLogic::PostCallCmdDebugMarkerBeginEXT(VkCommandBuffer command_buffer,
 }
 
 void LayerLogic::PreCallCmdDebugMarkerEndEXT(VkCommandBuffer command_buffer) {
-  LOG("PreCallCmdDebugMarkerEndEXT");
   command_buffer_manager_.MarkDebugMarkerEnd(command_buffer);
 }
 
