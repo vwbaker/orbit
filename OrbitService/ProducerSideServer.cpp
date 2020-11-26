@@ -33,14 +33,10 @@ bool ProducerSideServer::BuildAndStart(std::string_view unix_domain_socket_path)
   return true;
 }
 
-void ProducerSideServer::Shutdown() {
+void ProducerSideServer::ShutdownAndWait() {
   CHECK(server_ != nullptr);
   producer_side_service_.OnExitRequest();
   server_->Shutdown();
-}
-
-void ProducerSideServer::Wait() {
-  CHECK(server_ != nullptr);
   server_->Wait();
 }
 

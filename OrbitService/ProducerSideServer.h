@@ -16,8 +16,7 @@ namespace orbit_service {
 class ProducerSideServer final : public CaptureStartStopListener {
  public:
   bool BuildAndStart(std::string_view unix_domain_socket_path);
-  void Shutdown();
-  void Wait();
+  void ShutdownAndWait();
 
   void OnCaptureStartRequested(CaptureEventBuffer* capture_event_buffer) override;
   void OnCaptureStopRequested() override;

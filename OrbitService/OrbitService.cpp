@@ -91,8 +91,7 @@ void OrbitService::Run(std::atomic<bool>* exit_requested) {
     std::this_thread::sleep_for(std::chrono::seconds{1});
   }
 
-  producer_side_server.Shutdown();
-  producer_side_server.Wait();
+  producer_side_server.ShutdownAndWait();
   grpc_server->RemoveCaptureStartStopListener(&producer_side_server);
 
   grpc_server->Shutdown();
