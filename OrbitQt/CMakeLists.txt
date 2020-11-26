@@ -14,10 +14,10 @@ target_sources(
           CallTreeWidget.h
           CopyKeySequenceEnabledTreeView.h
           CutoutWidget.h
-          deploymentconfigurations.h
+          DeploymentConfigurations.h
           ElidedLabel.h
           Error.h
-          eventloop.h
+          EventLoop.h
           orbitaboutdialog.h
           orbitcodeeditor.h
           orbitdataviewpanel.h
@@ -49,7 +49,7 @@ target_sources(
           ElidedLabel.cpp
           MainThreadExecutorImpl.cpp
           StatusListenerImpl.cpp
-          deploymentconfigurations.cpp
+          DeploymentConfigurations.cpp
           main.cpp
           orbitaboutdialog.cpp
           orbitaboutdialog.ui
@@ -137,9 +137,11 @@ target_compile_options(OrbitQtTests PRIVATE ${STRICT_COMPILE_FLAGS})
 target_sources(OrbitQtTests
         PRIVATE
                 CutoutWidget.h
+                EventLoop.h
                 TutorialOverlay.h)
 target_sources(OrbitQtTests
-        PRIVATE ProcessItemModelTest.cpp
+        PRIVATE EventLoopTest.cpp
+                ProcessItemModelTest.cpp
                 ProcessItemModel.cpp
                 StatusListenerImplTest.cpp
                 StatusListenerImpl.cpp

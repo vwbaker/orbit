@@ -12,15 +12,15 @@
 #include <optional>
 #include <string>
 
+#include "DeploymentConfigurations.h"
 #include "OrbitBase/Result.h"
 #include "OrbitSshQt/Session.h"
 #include "OrbitSshQt/SftpChannel.h"
 #include "OrbitSshQt/SftpCopyToRemoteOperation.h"
 #include "OrbitSshQt/Task.h"
 #include "OrbitSshQt/Tunnel.h"
-#include "deploymentconfigurations.h"
 
-namespace OrbitQt {
+namespace orbit_qt {
 
 class ServiceDeployManager : public QObject {
   Q_OBJECT
@@ -87,6 +87,6 @@ class ServiceDeployManager : public QObject {
   void handleSocketError(std::error_code);
 };
 
-}  // namespace OrbitQt
+}  // namespace orbit_qt
 
 #endif  // ORBIT_QT_SERVICE_DEPLOY_MANAGER_H_
