@@ -8,7 +8,7 @@
 #include "DeviceManager.h"
 #include "DispatchTable.h"
 #include "OrbitBase/Logging.h"
-#include "OrbitService/ProducerSideUnixDomainSocketPath.h"
+#include "OrbitService/ProducerSideChannel.h"
 #include "QueueManager.h"
 #include "SubmissionTracker.h"
 #include "TimerQueryPool.h"
@@ -196,9 +196,7 @@ class LayerLogic {
     absl::MutexLock lock{&vulkan_layer_producer_mutex_};
     if (vulkan_layer_producer_ == nullptr) {
       vulkan_layer_producer_ = std::make_unique<VulkanLayerProducerImpl>();
-      if (!vulkan_layer_producer_->BringUp(orbit_service::kProducerSideUnixDomainSocketPath)) {
-        vulkan_layer_producer_.reset();
-      }
+      vulkan_layer_producer_->BringUp(orbit_service::CreateProducerSideChannel());
     }
   }
 

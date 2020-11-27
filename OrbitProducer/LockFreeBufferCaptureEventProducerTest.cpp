@@ -27,19 +27,18 @@ class LockFreeBufferCaptureEventProducerImpl
 class LockFreeBufferCaptureEventProducerTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    static const std::string kUnixDomainSocketPath = "./orbit-producer-tests-socket";
+    fake_service.emplace();
 
     grpc::ServerBuilder builder;
-    builder.AddListeningPort(absl::StrFormat("unix:%s", kUnixDomainSocketPath),
-                             grpc::InsecureServerCredentials());
-
-    fake_service.emplace();
     builder.RegisterService(&fake_service.value());
     fake_server = builder.BuildAndStart();
     ASSERT_NE(fake_server, nullptr);
 
+    std::shared_ptr<grpc::Channel> channel =
+        fake_server->InProcessChannel(grpc::ChannelArguments{});
+
     buffer_producer.emplace();
-    ASSERT_TRUE(buffer_producer->ConnectAndStart(kUnixDomainSocketPath));
+    buffer_producer->BuildAndStart(channel);
 
     // Leave some time for the ReceiveCommandsAndSendEvents RPC to actually happen.
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -65,7 +64,7 @@ class LockFreeBufferCaptureEventProducerTest : public ::testing::Test {
   std::optional<LockFreeBufferCaptureEventProducerImpl> buffer_producer;
 };
 
-constexpr std::chrono::duration kWaitMessagesSentDuration = std::chrono::milliseconds(25);
+constexpr std::chrono::duration kWaitMessagesSentDuration = std::chrono::milliseconds(10);
 
 }  // namespace
 

@@ -20,8 +20,8 @@ namespace {
 class CaptureEventProducerImpl : public CaptureEventProducer {
  public:
   // Override and forward these methods to make them public.
-  [[nodiscard]] bool ConnectAndStart(std::string_view unix_domain_socket_path) override {
-    return CaptureEventProducer::ConnectAndStart(unix_domain_socket_path);
+  void BuildAndStart(const std::shared_ptr<grpc::Channel>& channel) override {
+    CaptureEventProducer::BuildAndStart(channel);
   }
 
   void ShutdownAndWait() override { CaptureEventProducer::ShutdownAndWait(); }
@@ -41,20 +41,18 @@ class CaptureEventProducerImpl : public CaptureEventProducer {
 class CaptureEventProducerTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    static const std::string kUnixDomainSocketPath = "./capture-event-producer-test-socket";
+    fake_service.emplace();
 
     grpc::ServerBuilder builder;
-    builder.AddListeningPort(absl::StrFormat("unix:%s", kUnixDomainSocketPath),
-                             grpc::InsecureServerCredentials());
-
-    fake_service.emplace();
     builder.RegisterService(&*fake_service);
     fake_server = builder.BuildAndStart();
     ASSERT_NE(fake_server, nullptr);
 
+    std::shared_ptr<grpc::Channel> channel =
+        fake_server->InProcessChannel(grpc::ChannelArguments{});
+
     producer.emplace();
-    bool connected_and_started = producer->ConnectAndStart(kUnixDomainSocketPath);
-    ASSERT_TRUE(connected_and_started);
+    producer->BuildAndStart(channel);
 
     // Leave some time for the ReceiveCommandsAndSendEvents RPC to actually happen.
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -80,12 +78,11 @@ class CaptureEventProducerTest : public ::testing::Test {
   std::optional<CaptureEventProducerImpl> producer;
 };
 
+constexpr std::chrono::duration kWaitMessagesSentDuration = std::chrono::milliseconds(10);
+
 }  // namespace
 
 TEST_F(CaptureEventProducerTest, OnCaptureStartStopAndIsCapturing) {
-  static constexpr std::chrono::duration kWaitCommandReceivedDuration =
-      std::chrono::milliseconds(25);
-
   {
     ::testing::InSequence in_sequence;
     EXPECT_CALL(*producer, OnCaptureStart).Times(1);
@@ -97,29 +94,29 @@ TEST_F(CaptureEventProducerTest, OnCaptureStartStopAndIsCapturing) {
   EXPECT_FALSE(producer->IsCapturing());
 
   fake_service->SendStartCaptureCommand();
-  std::this_thread::sleep_for(kWaitCommandReceivedDuration);
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_TRUE(producer->IsCapturing());
 
   // This should have no effect.
   fake_service->SendStartCaptureCommand();
-  std::this_thread::sleep_for(kWaitCommandReceivedDuration);
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_TRUE(producer->IsCapturing());
 
   fake_service->SendStopCaptureCommand();
-  std::this_thread::sleep_for(kWaitCommandReceivedDuration);
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_FALSE(producer->IsCapturing());
 
   // This should have no effect.
   fake_service->SendStopCaptureCommand();
-  std::this_thread::sleep_for(kWaitCommandReceivedDuration);
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_FALSE(producer->IsCapturing());
 
   fake_service->SendStartCaptureCommand();
-  std::this_thread::sleep_for(kWaitCommandReceivedDuration);
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_TRUE(producer->IsCapturing());
 
   fake_service->SendStopCaptureCommand();
-  std::this_thread::sleep_for(kWaitCommandReceivedDuration);
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_FALSE(producer->IsCapturing());
 }
 

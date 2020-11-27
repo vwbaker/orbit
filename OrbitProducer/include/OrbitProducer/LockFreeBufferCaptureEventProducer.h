@@ -23,13 +23,10 @@ namespace orbit_producer {
 template <typename IntermediateEventT>
 class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
  public:
-  [[nodiscard]] bool ConnectAndStart(std::string_view unix_domain_socket_path) override {
-    if (!CaptureEventProducer::ConnectAndStart(unix_domain_socket_path)) {
-      return false;
-    }
+  void BuildAndStart(const std::shared_ptr<grpc::Channel>& channel) override {
+    CaptureEventProducer::BuildAndStart(channel);
 
     forwarder_thread_ = std::thread{[this] { ForwarderThread(); }};
-    return true;
   }
 
   void ShutdownAndWait() override {

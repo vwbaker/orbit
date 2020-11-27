@@ -8,6 +8,7 @@
 #include <thread>
 
 #include "absl/synchronization/mutex.h"
+#include "grpcpp/grpcpp.h"
 #include "producer_side_services.grpc.pb.h"
 
 namespace orbit_producer {
@@ -21,7 +22,7 @@ class CaptureEventProducer {
   [[nodiscard]] bool IsCapturing() { return is_capturing_; }
 
  protected:
-  [[nodiscard]] virtual bool ConnectAndStart(std::string_view unix_domain_socket_path);
+  virtual void BuildAndStart(const std::shared_ptr<grpc::Channel>& channel);
   virtual void ShutdownAndWait();
 
   virtual void OnCaptureStart();

@@ -13,7 +13,7 @@
 
 #include "OrbitBase/Logging.h"
 #include "OrbitGrpcServer.h"
-#include "OrbitService/ProducerSideUnixDomainSocketPath.h"
+#include "OrbitService/ProducerSideChannel.h"
 #include "OrbitVersion/OrbitVersion.h"
 #include "ProducerSideServer.h"
 

@@ -16,8 +16,8 @@ namespace orbit_vulkan_layer {
 // while also handling interning of strings.
 class VulkanLayerProducerImpl : public VulkanLayerProducer {
  public:
-  [[nodiscard]] bool BringUp(std::string_view unix_domain_socket_path) override {
-    return lock_free_producer_.ConnectAndStart(unix_domain_socket_path);
+  void BringUp(const std::shared_ptr<grpc::Channel>& channel) override {
+    return lock_free_producer_.BuildAndStart(channel);
   }
 
   void TakeDown() override { lock_free_producer_.ShutdownAndWait(); }

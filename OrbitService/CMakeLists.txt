@@ -11,7 +11,7 @@ add_library(OrbitServiceLib STATIC)
 target_compile_options(OrbitServiceLib PRIVATE ${STRICT_COMPILE_FLAGS})
 
 target_sources(OrbitServiceLib PUBLIC
-        include/OrbitService/ProducerSideUnixDomainSocketPath.h)
+        include/OrbitService/ProducerSideChannel.h)
 
 target_sources(OrbitServiceLib PRIVATE
         CaptureEventBuffer.h

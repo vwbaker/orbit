@@ -6,6 +6,7 @@
 #define ORBIT_VULKAN_LAYER_VULKAN_LAYER_PRODUCER_H_
 
 #include "capture.pb.h"
+#include "grpcpp/grpcpp.h"
 
 namespace orbit_vulkan_layer {
 
@@ -18,7 +19,7 @@ class VulkanLayerProducer {
 
   // This method tries to establish a gRPC connection with OrbitService over Unix domain socket
   // and gets the class ready to send CaptureEvents.
-  [[nodiscard]] virtual bool BringUp(std::string_view unix_domain_socket_path) = 0;
+  virtual void BringUp(const std::shared_ptr<grpc::Channel>& channel) = 0;
 
   // This method causes the class to stop sending any remaining queued CaptureEvent
   // and closes the connection with OrbitService.

@@ -5,7 +5,6 @@
 #include "OrbitProducer/CaptureEventProducer.h"
 
 #include "OrbitBase/Logging.h"
-#include "grpcpp/grpcpp.h"
 
 using orbit_grpc_protos::ProducerSideService;
 using orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest;
@@ -15,23 +14,13 @@ namespace orbit_producer {
 
 CaptureEventProducer::~CaptureEventProducer() = default;
 
-bool CaptureEventProducer::ConnectAndStart(std::string_view unix_domain_socket_path) {
-  std::string server_address = absl::StrFormat("unix:%s", unix_domain_socket_path);
-  std::shared_ptr<grpc::Channel> channel = grpc::CreateCustomChannel(
-      server_address, grpc::InsecureChannelCredentials(), grpc::ChannelArguments{});
-  if (channel == nullptr) {
-    ERROR("Creating gRPC channel for CaptureEventProducer");
-    return false;
-  }
+void CaptureEventProducer::BuildAndStart(const std::shared_ptr<grpc::Channel>& channel) {
+  CHECK(channel != nullptr);
 
   producer_side_service_stub_ = ProducerSideService::NewStub(channel);
-  if (producer_side_service_stub_ == nullptr) {
-    ERROR("Creating gRPC stub for CaptureEventProducer");
-    return false;
-  }
+  CHECK(producer_side_service_stub_ != nullptr);
 
   connect_and_receive_commands_thread_ = std::thread{[this] { ConnectAndReceiveCommandsThread(); }};
-  return true;
 }
 
 void CaptureEventProducer::ShutdownAndWait() {
