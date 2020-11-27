@@ -11,6 +11,7 @@
 namespace orbit_service {
 
 void ProducerSideServiceImpl::OnCaptureStartRequested(CaptureEventBuffer* capture_event_buffer) {
+  CHECK(capture_event_buffer != nullptr);
   LOG("About to send StartCaptureCommand to CaptureEventProducers (if any)");
   {
     absl::WriterMutexLock lock{&capture_event_buffer_mutex_};
@@ -27,18 +28,17 @@ void ProducerSideServiceImpl::OnCaptureStopRequested() {
   {
     absl::MutexLock lock{&service_state_mutex_};
     service_state_.capture_status = CaptureStatus::kCaptureStopping;
-    static constexpr absl::Duration kMaxWaitForAllEventsSent = absl::Seconds(10);
 
     // Wait (for a limited amount of time) for all producers to send AllEventsSent or to disconnect.
-    bool condition_satisfied = service_state_mutex_.AwaitWithTimeout(
-        absl::Condition(
-            +[](ServiceState* service_state) {
-              return service_state->producers_remaining <= 0 || service_state->exit_requested;
-            },
-            &service_state_),
-        kMaxWaitForAllEventsSent);
-    if (condition_satisfied && !service_state_.exit_requested) {
-      CHECK(service_state_.producers_remaining == 0);
+    service_state_mutex_.AwaitWithTimeout(absl::Condition(
+                                              +[](ServiceState* service_state) {
+                                                return service_state->producers_remaining == 0 ||
+                                                       service_state->exit_requested;
+                                              },
+                                              &service_state_),
+                                          max_wait_for_all_events_sent_);
+    CHECK(service_state_.producers_remaining >= 0);
+    if (service_state_.producers_remaining == 0) {
       LOG("All CaptureEventProducers have finished sending their CaptureEvents");
     } else {
       ERROR(
@@ -87,21 +87,28 @@ grpc::Status ProducerSideServiceImpl::ReceiveCommandsAndSendEvents(
     server_contexts_.emplace(context);
   }
 
-  // This will also be protected by service_state_mutex_.
+  // This keeps whether we are still waiting for an AllEventsSent message at the end of a capture.
+  // It starts as true as we aren't yet waiting for such message when the connection is established.
+  // Note that this will also be protected by service_state_mutex_.
   bool all_events_sent_received = true;
 
   std::atomic<bool> exit_send_commands_thread = false;
 
+  // This thread is responsible for writing on stream, and specifically for
+  // sending StartCaptureCommands and StopCaptureCommands to the connected producer.
   std::thread send_commands_thread{&ProducerSideServiceImpl::SendCommandsThread,
                                    this,
                                    context,
                                    stream,
                                    &all_events_sent_received,
                                    &exit_send_commands_thread};
+
+  // This thread is responsible for reading from stream, and specifically for
+  // receiving CaptureEvents and AllEventsSent messages.
   std::thread receive_events_thread{&ProducerSideServiceImpl::ReceiveEventsThread, this, context,
                                     stream, &all_events_sent_received};
-
   receive_events_thread.join();
+
   // When receive_events_thread exits because stream->Read(&request) fails,
   // it means that the producer has disconnected: ask send_commands_thread to exit, too.
   exit_send_commands_thread = true;
@@ -128,8 +135,13 @@ void ProducerSideServiceImpl::SendCommandsThread(
   // if service_state_.capture_status is actually CaptureStatus::kCaptureStopping.
   CaptureStatus prev_capture_status = CaptureStatus::kCaptureFinished;
 
+  // This loop keeps track of changes to service_state_.capture_status using
+  // conditional critical sections on service_state_mutex_ and updating prev_capture_status,
+  // and sends StartCaptureCommands and StopCaptureCommands accordingly.
+  // It exits when *exit_send_commands_thread is true, when service_state_.exit_requested is true,
+  // or when Write fails (because the producer disconnected or because the context was cancelled).
   while (true) {
-    // This is set when ReceiveEventsThread has exited. Then, this thread should also exit.
+    // This is set when ReceiveEventsThread has exited. At that point this thread should also exit.
     if (*exit_send_commands_thread) {
       return;
     }
@@ -190,6 +202,11 @@ void ProducerSideServiceImpl::SendCommandsThread(
     // Use a timeout to periodically check (in the next iteration)
     // for *terminate_send_commands_thread, set by ReceiveCommandsAndSendEvents.
     static constexpr absl::Duration kCheckExitSendCommandsThreadInterval = absl::Seconds(1);
+
+    // The three cases in this switch are almost identical,
+    // except for the value service_state->capture_status is compared with.
+    // The reason for the duplication is that AwaitWithTimeout takes a function pointer,
+    // which means that the lambda cannot capture the initial state.
     switch (service_state_.capture_status) {
       case CaptureStatus::kCaptureStarted: {
         service_state_mutex_.AwaitWithTimeout(absl::Condition(
@@ -247,6 +264,8 @@ void ProducerSideServiceImpl::ReceiveEventsThread(
     switch (request.event_case()) {
       case orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest::kBufferedCaptureEvents: {
         absl::MutexLock lock{&capture_event_buffer_mutex_};
+        // capture_event_buffer_ can be nullptr if a producer sends events while not capturing.
+        // Don't log an error in such a case as it could easily spam the logs.
         if (capture_event_buffer_ != nullptr) {
           for (orbit_grpc_protos::CaptureEvent event :
                request.buffered_capture_events().capture_events()) {
@@ -261,6 +280,8 @@ void ProducerSideServiceImpl::ReceiveEventsThread(
         switch (service_state_.capture_status) {
           case CaptureStatus::kCaptureStarted: {
             ERROR("CaptureEventProducer sent AllEventsSent while still capturing");
+            // Even if we weren't waiting for the AllEventsSent message yet,
+            // still keep track of the fact that we have already received it.
             if (!*all_events_sent_received) {
               --service_state_.producers_remaining;
               *all_events_sent_received = true;
@@ -268,6 +289,7 @@ void ProducerSideServiceImpl::ReceiveEventsThread(
           } break;
 
           case CaptureStatus::kCaptureStopping: {
+            // If we were waiting for AllEventsSent, keep track of the fact that we received it.
             if (!*all_events_sent_received) {
               --service_state_.producers_remaining;
               *all_events_sent_received = true;

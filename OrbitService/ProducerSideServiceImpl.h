@@ -15,10 +15,28 @@ namespace orbit_service {
 class ProducerSideServiceImpl final : public orbit_grpc_protos::ProducerSideService::Service,
                                       public CaptureStartStopListener {
  public:
+  // This method causes the StartCaptureCommand to be sent to connected producers
+  // (but if it's called multiple times in a row, the command will only be sent once).
+  // CaptureEvents received from producers will be added to capture_event_buffer.
   void OnCaptureStartRequested(CaptureEventBuffer* capture_event_buffer) override;
 
+  // This method causes the StopCaptureCommand to be sent to connected producers
+  // (but if it's called multiple times in a row, the command will only be sent once).
+  // The CaptureEventBuffer passed with OnCaptureStartRequested will no longer be filled.
+  // This method blocks until all producers have notified they have sent all their CaptureEvents,
+  // for a maximum time that can be specified with SetMaxWaitForAllCaptureEvents (default 10 s).
   void OnCaptureStopRequested() override;
 
+  // This methods allows to specify a timeout for OnCaptureStopRequested, which blocks
+  // until all CaptureEvents have been sent by the producers. The default is 10 seconds.
+  void SetMaxWaitForAllCaptureEvents(absl::Duration duration) {
+    max_wait_for_all_events_sent_ = duration;
+  }
+
+  // This method forces to disconnect from connected producers and to terminate running threads.
+  // It doesn't cause StopCaptureCommand to be sent, but producers will be able to handle
+  // the fact that the connection was interrupted.
+  // No OnCaptureStartRequested or OnCaptureStopRequested should be called afterwards.
   void OnExitRequest();
 
   grpc::Status ReceiveCommandsAndSendEvents(
@@ -54,6 +72,8 @@ class ProducerSideServiceImpl final : public orbit_grpc_protos::ProducerSideServ
 
   CaptureEventBuffer* capture_event_buffer_ = nullptr;
   absl::Mutex capture_event_buffer_mutex_;
+
+  absl::Duration max_wait_for_all_events_sent_ = absl::Seconds(10);
 };
 
 }  // namespace orbit_service
