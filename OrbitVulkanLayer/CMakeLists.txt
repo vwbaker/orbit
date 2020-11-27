@@ -40,6 +40,7 @@ target_compile_options(OrbitVulkanLayerTests PRIVATE ${STRICT_COMPILE_FLAGS})
 target_sources(OrbitVulkanLayerTests PRIVATE
         DeviceManagerTest.cpp
         DispatchTableTest.cpp
+        SubmissionTrackerTest.cpp
         TimerQueryPoolTest.cpp
         QueueManagerTest.cpp)
 

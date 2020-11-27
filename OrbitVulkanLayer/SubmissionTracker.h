@@ -58,6 +58,7 @@ class SubmissionTracker {
         vulkan_layer_producer_{vulkan_layer_producer} {
     CHECK(vulkan_layer_producer_ != nullptr);
   }
+
   void TrackCommandBuffers(VkDevice device, VkCommandPool pool,
                            const VkCommandBuffer* command_buffers, uint32_t count) {
     absl::WriterMutexLock lock(&mutex_);
@@ -67,19 +68,21 @@ class SubmissionTracker {
     absl::flat_hash_set<VkCommandBuffer>& associated_cbs = pool_to_command_buffers_.at(pool);
     for (uint32_t i = 0; i < count; ++i) {
       VkCommandBuffer cb = command_buffers[i];
-      CHECK(cb != VK_NULL_HANDLE);
+      CHECK(!associated_cbs.contains(cb));
+      CHECK(!command_buffer_to_device_.contains(cb));
       associated_cbs.insert(cb);
       command_buffer_to_device_[cb] = device;
     }
   }
+
   void UntrackCommandBuffers(VkDevice device, VkCommandPool pool,
                              const VkCommandBuffer* command_buffers, uint32_t count) {
     absl::WriterMutexLock lock(&mutex_);
+    CHECK(pool_to_command_buffers_.contains(pool));
     absl::flat_hash_set<VkCommandBuffer>& associated_command_buffers =
         pool_to_command_buffers_.at(pool);
     for (uint32_t i = 0; i < count; ++i) {
       VkCommandBuffer command_buffer = command_buffers[i];
-      CHECK(command_buffer != VK_NULL_HANDLE);
       associated_command_buffers.erase(command_buffer);
       CHECK(command_buffer_to_device_.contains(command_buffer));
       CHECK(command_buffer_to_device_.at(command_buffer) == device);
@@ -439,8 +442,8 @@ class SubmissionTracker {
     std::optional<SubmittedMarker> begin_info;
     std::optional<SubmittedMarker> end_info;
     std::string text;
-    Color color = {};
-    size_t depth = 0;
+    Color color;
+    size_t depth;
   };
 
   struct QueueMarkerState {
@@ -491,7 +494,7 @@ class SubmissionTracker {
   }
 
   std::vector<QueueSubmission> PullCompletedSubmissions(VkDevice device, VkQueryPool query_pool) {
-    std::vector<QueueSubmission> completed_submissions;
+    std::vector<QueueSubmission> completed_submissions = {};
 
     absl::WriterMutexLock lock(&mutex_);
     for (auto& [unused_queue, queue_submissions] : queue_to_submissions_) {
