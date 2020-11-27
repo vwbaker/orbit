@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef ORBIT_SERVICE_TARGET_SIDE_CHANNEL_H_
-#define ORBIT_SERVICE_TARGET_SIDE_CHANNEL_H_
+#ifndef ORBIT_SERVICE_PRODUCER_SIDE_CHANNEL_H_
+#define ORBIT_SERVICE_PRODUCER_SIDE_CHANNEL_H_
 
 #include "grpcpp/grpcpp.h"
 
@@ -19,4 +19,4 @@ inline std::shared_ptr<grpc::Channel> CreateProducerSideChannel(
 
 }  // namespace orbit_service
 
-#endif  // ORBIT_SERVICE_TARGET_SIDE_CHANNEL_H_
+#endif  // ORBIT_SERVICE_PRODUCER_SIDE_CHANNEL_H_
