@@ -438,6 +438,11 @@ class SubmissionTracker {
     if (state.command_buffer_end_slot_index.has_value()) {
       marker_slots_to_rollback.push_back(state.command_buffer_end_slot_index.value());
     }
+    for (const Marker& marker : state.markers) {
+      if (marker.slot_index.has_value()) {
+        marker_slots_to_rollback.push_back(marker.slot_index.value());
+      }
+    }
     timer_query_pool_->RollbackPendingQuerySlots(device, marker_slots_to_rollback);
 
     command_buffer_to_state_.erase(command_buffer);
