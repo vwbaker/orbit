@@ -20,10 +20,7 @@ class VulkanLayerProducerImpl : public VulkanLayerProducer {
     return lock_free_producer_.BuildAndStart(channel);
   }
 
-  void TakeDown() override {
-    LOG("VulkanLayerProducerImpl::TakeDown");
-    lock_free_producer_.ShutdownAndWait();
-  }
+  void TakeDown() override { lock_free_producer_.ShutdownAndWait(); }
 
   [[nodiscard]] bool IsCapturing() override { return lock_free_producer_.IsCapturing(); }
 
