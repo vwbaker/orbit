@@ -201,14 +201,78 @@ class SubmissionTracker {
   // Thus, our identification via the pointers become invalid. We will use the vkQueueSubmit
   // to make our data persistent until we have processed the results of the execution of these
   // command buffers (which will be done in the vkQueuePresentKHR).
-  void PersistSubmitInformation(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits) {
+  [[nodiscard]] std::optional<uint64_t> PreSubmission() {
     if (!IsCapturing()) {
+      // The post submit routine will take care of clean up/slot resetting.
+      return std::nullopt;
+    }
+    return MonotonicTimestampNs();
+  }
+
+  // Take a timestamp before and after the execution of the driver code for the submission.
+  // This allows us to map submissions from the vulkan layer to the driver submissions.
+  void DoPostSubmitQueue(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits,
+                         std::optional<uint64_t> pre_submit_timestamp) {
+    // We might just recently stopped or started the capture (within the pre. of this submit), so
+    // we won't have any information to send yet. However, we still must reset the query slots used.
+    if (!IsCapturing() || !pre_submit_timestamp.has_value()) {
+      {
+        absl::ReaderMutexLock lock(&mutex_);
+        if (command_buffer_to_state_.empty()) {
+          return;
+        }
+      }
+      std::vector<uint32_t> reset_slots;
+      VkDevice device = VK_NULL_HANDLE;
+      {
+        absl::WriterMutexLock lock(&mutex_);
+        for (uint32_t submit_index = 0; submit_index < submit_count; ++submit_index) {
+          VkSubmitInfo submit_info = submits[submit_index];
+          for (uint32_t command_buffer_index = 0;
+               command_buffer_index < submit_info.commandBufferCount; ++command_buffer_index) {
+            VkCommandBuffer command_buffer = submit_info.pCommandBuffers[command_buffer_index];
+            if (device == VK_NULL_HANDLE) {
+              device = command_buffer_to_device_.at(command_buffer);
+            }
+            if (!command_buffer_to_state_.contains(command_buffer)) {
+              continue;
+            }
+            CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
+            if (state.command_buffer_begin_slot_index.has_value()) {
+              reset_slots.push_back(state.command_buffer_begin_slot_index.value());
+            }
+            if (state.command_buffer_end_slot_index.has_value()) {
+              reset_slots.push_back(state.command_buffer_end_slot_index.value());
+            }
+
+            for (const Marker& marker : state.markers) {
+              if (marker.slot_index.has_value()) {
+                reset_slots.push_back(marker.slot_index.value());
+              }
+            }
+
+            command_buffer_to_state_.erase(command_buffer);
+          }
+        }
+      }
+      if (!reset_slots.empty()) {
+        timer_query_pool_->ResetQuerySlots(device, reset_slots);
+      }
       return;
     }
 
-    QueueSubmission queue_submission = {};
-
     absl::WriterMutexLock lock(&mutex_);
+    if (!queue_to_markers_.contains(queue)) {
+      queue_to_markers_[queue] = {};
+    }
+    CHECK(queue_to_markers_.contains(queue));
+    QueueMarkerState& markers = queue_to_markers_.at(queue);
+
+    QueueSubmission queue_submission = {};
+    queue_submission.meta_information.thread_id = GetCurrentThreadId();
+    queue_submission.meta_information.post_submission_cpu_timestamp = MonotonicTimestampNs();
+    queue_submission.meta_information.pre_submission_cpu_timestamp = pre_submit_timestamp.value();
+
     for (uint32_t submit_index = 0; submit_index < submit_count; ++submit_index) {
       VkSubmitInfo submit_info = submits[submit_index];
       queue_submission.submit_infos.emplace_back();
@@ -218,59 +282,19 @@ class SubmissionTracker {
         VkCommandBuffer command_buffer = submit_info.pCommandBuffers[command_buffer_index];
         CHECK(command_buffer_to_state_.contains(command_buffer));
         CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
-        if (!state.command_buffer_begin_slot_index.has_value()) {
-          continue;
-        }
-        CHECK(state.command_buffer_end_slot_index.has_value());
-        SubmittedCommandBuffer submitted_command_buffer{
-            .command_buffer_begin_slot_index = state.command_buffer_begin_slot_index.value(),
-            .command_buffer_end_slot_index = state.command_buffer_end_slot_index.value()};
-        submitted_submit_info.command_buffers.emplace_back(submitted_command_buffer);
-      }
-    }
-    queue_submission.meta_information.thread_id = GetCurrentThreadId();
-    queue_submission.meta_information.pre_submission_cpu_timestamp = MonotonicTimestampNs();
 
-    if (!queue_to_submissions_.contains(queue)) {
-      queue_to_submissions_[queue] = {};
-    }
-    queue_to_submissions_.at(queue).emplace_back(std::move(queue_submission));
-  }
-
-  // Take a timestamp before and after the execution of the driver code for the submission.
-  // This allows us to map submissions from the vulkan layer to the driver submissions.
-  void DoPostSubmitQueue(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits) {
-    absl::WriterMutexLock lock(&mutex_);
-    if (!queue_to_markers_.contains(queue)) {
-      queue_to_markers_[queue] = {};
-    }
-    CHECK(queue_to_markers_.contains(queue));
-    QueueMarkerState& markers = queue_to_markers_.at(queue);
-    QueueSubmission* queue_submission = nullptr;
-
-    // TODO: What happens if we start capturing right between the pre- and post-submission.
-    if (queue_to_submissions_.contains(queue) && IsCapturing()) {
-      queue_submission = &queue_to_submissions_.at(queue).back();
-      queue_submission->meta_information.post_submission_cpu_timestamp = MonotonicTimestampNs();
-    }
-
-    for (uint32_t submit_index = 0; submit_index < submit_count; ++submit_index) {
-      VkSubmitInfo submit_info = submits[submit_index];
-      for (uint32_t command_buffer_index = 0; command_buffer_index < submit_info.commandBufferCount;
-           ++command_buffer_index) {
-        VkCommandBuffer command_buffer = submit_info.pCommandBuffers[command_buffer_index];
-        CHECK(command_buffer_to_state_.contains(command_buffer));
-        for (const Marker& marker : command_buffer_to_state_.at(command_buffer).markers) {
+        // Debug markers:
+        for (const Marker& marker : state.markers) {
           std::optional<SubmittedMarker> submitted_marker = std::nullopt;
-          if (queue_submission != nullptr && marker.slot_index.has_value()) {
-            submitted_marker = {.meta_information = queue_submission->meta_information,
+          if (marker.slot_index.has_value()) {
+            submitted_marker = {.meta_information = queue_submission.meta_information,
                                 .slot_index = marker.slot_index.value()};
           }
 
           switch (marker.type) {
             case MarkerType::kDebugMarkerBegin: {
-              if (queue_submission != nullptr && marker.slot_index.has_value()) {
-                ++queue_submission->num_begin_markers;
+              if (marker.slot_index.has_value()) {
+                ++queue_submission.num_begin_markers;
               }
               CHECK(marker.text.has_value());
               CHECK(marker.color.has_value());
@@ -285,18 +309,34 @@ class SubmissionTracker {
             case MarkerType::kDebugMarkerEnd: {
               MarkerState marker_state = markers.marker_stack.top();
               markers.marker_stack.pop();
-              if (queue_submission != nullptr && marker.slot_index.has_value()) {
+              if (marker.slot_index.has_value()) {
                 marker_state.end_info = submitted_marker;
-                queue_submission->completed_markers.emplace_back(std::move(marker_state));
+                queue_submission.completed_markers.emplace_back(std::move(marker_state));
               }
 
               break;
             }
           }
         }
+
+        // Command buffer timings:
+        if (!state.command_buffer_begin_slot_index.has_value()) {
+          continue;
+        }
+        CHECK(state.command_buffer_end_slot_index.has_value());
+        SubmittedCommandBuffer submitted_command_buffer{
+            .command_buffer_begin_slot_index = state.command_buffer_begin_slot_index.value(),
+            .command_buffer_end_slot_index = state.command_buffer_end_slot_index.value()};
+        submitted_submit_info.command_buffers.emplace_back(submitted_command_buffer);
+
         command_buffer_to_state_.erase(command_buffer);
       }
     }
+
+    if (!queue_to_submissions_.contains(queue)) {
+      queue_to_submissions_[queue] = {};
+    }
+    queue_to_submissions_.at(queue).emplace_back(std::move(queue_submission));
   }
 
   void CompleteSubmits(VkDevice device) {

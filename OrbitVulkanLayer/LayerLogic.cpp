@@ -122,13 +122,15 @@ void LayerLogic::PreCallResetCommandBuffer(VkCommandBuffer command_buffer,
   command_buffer_manager_.ResetCommandBuffer(command_buffer);
 }
 
-void LayerLogic::PreCallQueueSubmit(VkQueue queue, uint32_t submit_count,
-                                    const VkSubmitInfo* submits, VkFence /*fence*/) {
-  command_buffer_manager_.PersistSubmitInformation(queue, submit_count, submits);
+std::optional<uint64_t> LayerLogic::PreCallQueueSubmit(VkQueue /*queue*/, uint32_t /*submit_count*/,
+                                                       const VkSubmitInfo* /*submits*/,
+                                                       VkFence /*fence*/) {
+  return command_buffer_manager_.PreSubmission();
 }
 void LayerLogic::PostCallQueueSubmit(VkQueue queue, uint32_t submit_count,
-                                     const VkSubmitInfo* submits, VkFence /*fence*/) {
-  command_buffer_manager_.DoPostSubmitQueue(queue, submit_count, submits);
+                                     const VkSubmitInfo* submits, VkFence /*fence*/,
+                                     std::optional<uint64_t> pre_submit_timestamp) {
+  command_buffer_manager_.DoPostSubmitQueue(queue, submit_count, submits, pre_submit_timestamp);
 }
 
 void LayerLogic::PostCallQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* /*present_info*/) {

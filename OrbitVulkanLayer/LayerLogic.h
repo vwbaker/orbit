@@ -145,14 +145,14 @@ class LayerLogic {
   void PostCallGetDeviceQueue2(VkDevice device, const VkDeviceQueueInfo2* queue_info,
                                VkQueue* queue);
 
-  void PreCallQueueSubmit(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits,
-                          VkFence fence);
+  std::optional<uint64_t> PreCallQueueSubmit(VkQueue queue, uint32_t submit_count,
+                                             const VkSubmitInfo* submits, VkFence fence);
   [[nodiscard]] VkResult CallQueueSubmit(VkQueue queue, uint32_t submit_count,
                                          const VkSubmitInfo* submits, VkFence fence) {
     return dispatch_table_.QueueSubmit(queue)(queue, submit_count, submits, fence);
   }
   void PostCallQueueSubmit(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits,
-                           VkFence fence);
+                           VkFence fence, std::optional<uint64_t> pre_submit_timestamp);
 
   [[nodiscard]] VkResult CallQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* present_info) {
     return dispatch_table_.QueuePresentKHR(queue)(queue, present_info);
