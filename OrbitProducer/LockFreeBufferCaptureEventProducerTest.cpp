@@ -82,12 +82,18 @@ TEST_F(LockFreeBufferCaptureEventProducerTest, EnqueueIntermediateEventIfCapturi
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_TRUE(buffer_producer->IsCapturing());
 
+  int32_t capture_events_received_count = 0;
+  ON_CALL(*fake_service, OnCaptureEventsReceived)
+      .WillByDefault([&capture_events_received_count](int32_t count) {
+        capture_events_received_count += count;
+      });
   EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(::testing::Between(1, 3));
   EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(0);
   EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
   EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
   EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
+  EXPECT_EQ(capture_events_received_count, 3);
 
   ::testing::Mock::VerifyAndClearExpectations(&*fake_service);
 
@@ -118,12 +124,21 @@ TEST_F(LockFreeBufferCaptureEventProducerTest, EnqueueIntermediateEvent) {
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_TRUE(buffer_producer->IsCapturing());
 
+  int32_t capture_events_received_count = 0;
+  ON_CALL(*fake_service, OnCaptureEventsReceived)
+      .WillByDefault([&capture_events_received_count](int32_t count) {
+        capture_events_received_count += count;
+      });
   EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(::testing::Between(1, 3));
   EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(0);
   buffer_producer->EnqueueIntermediateEvent("");
-  buffer_producer->EnqueueIntermediateEvent("");
+  {
+    static const std::string kIntermediateEventPassedByConstRef;
+    buffer_producer->EnqueueIntermediateEvent(kIntermediateEventPassedByConstRef);
+  }
   buffer_producer->EnqueueIntermediateEvent("");
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
+  EXPECT_EQ(capture_events_received_count, 3);
 
   ::testing::Mock::VerifyAndClearExpectations(&*fake_service);
 
@@ -135,9 +150,14 @@ TEST_F(LockFreeBufferCaptureEventProducerTest, EnqueueIntermediateEvent) {
 
   ::testing::Mock::VerifyAndClearExpectations(&*fake_service);
 
+  // Events enqueued with EnqueueIntermediateEvent regardless of whether a capture is being taken
+  // are always sent (it's then up to ProducerSideService to discard them).
   EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(1);
   EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(0);
   buffer_producer->EnqueueIntermediateEvent("");
+  buffer_producer->EnqueueIntermediateEvent("");
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
+  EXPECT_EQ(capture_events_received_count, 5);
 }
 
 TEST_F(LockFreeBufferCaptureEventProducerTest, UnexpectedStartStopCaptureCommands) {
@@ -154,12 +174,18 @@ TEST_F(LockFreeBufferCaptureEventProducerTest, UnexpectedStartStopCaptureCommand
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_TRUE(buffer_producer->IsCapturing());
 
+  int32_t capture_events_received_count = 0;
+  ON_CALL(*fake_service, OnCaptureEventsReceived)
+      .WillByDefault([&capture_events_received_count](int32_t count) {
+        capture_events_received_count += count;
+      });
   EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(::testing::Between(1, 3));
   EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(0);
   EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
   EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
   EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
+  EXPECT_EQ(capture_events_received_count, 3);
 
   ::testing::Mock::VerifyAndClearExpectations(&*fake_service);
 
@@ -173,6 +199,7 @@ TEST_F(LockFreeBufferCaptureEventProducerTest, UnexpectedStartStopCaptureCommand
   EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
   EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
+  EXPECT_EQ(capture_events_received_count, 5);
 
   ::testing::Mock::VerifyAndClearExpectations(&*fake_service);
 
@@ -219,12 +246,18 @@ TEST_F(LockFreeBufferCaptureEventProducerTest, ServiceDisconnects) {
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_TRUE(buffer_producer->IsCapturing());
 
+  int32_t capture_events_received_count = 0;
+  ON_CALL(*fake_service, OnCaptureEventsReceived)
+      .WillByDefault([&capture_events_received_count](int32_t count) {
+        capture_events_received_count += count;
+      });
   EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(::testing::Between(1, 3));
   EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(0);
   EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
   EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
   EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
+  EXPECT_EQ(capture_events_received_count, 3);
 
   ::testing::Mock::VerifyAndClearExpectations(&*fake_service);
 

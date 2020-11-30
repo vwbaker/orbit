@@ -29,7 +29,7 @@ class FakeProducerSideService : public orbit_grpc_protos::ProducerSideService::S
                 orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest::EVENT_NOT_SET);
       switch (request.event_case()) {
         case orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest::kBufferedCaptureEvents:
-          OnCaptureEventsReceived();
+          OnCaptureEventsReceived(request.buffered_capture_events().capture_events_size());
           break;
         case orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest::kAllEventsSent:
           OnAllEventsSentReceived();
@@ -69,7 +69,7 @@ class FakeProducerSideService : public orbit_grpc_protos::ProducerSideService::S
     stream_ = nullptr;
   }
 
-  MOCK_METHOD(void, OnCaptureEventsReceived, (), ());
+  MOCK_METHOD(void, OnCaptureEventsReceived, (int32_t count), ());
   MOCK_METHOD(void, OnAllEventsSentReceived, (), ());
 
  private:

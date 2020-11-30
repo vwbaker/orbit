@@ -23,12 +23,12 @@ class CaptureEventProducer {
   [[nodiscard]] bool IsCapturing() { return is_capturing_; }
 
  protected:
-  // This method establishes the connection with ProducerSideService.
-  // If a connection fails or is interrupted, the class will keep trying to reconnect.
-  // Subclasses can extend this method by overriding it, but must also call the overridden method.
+  // This method establishes the connection with ProducerSideService. If a connection fails or
+  // is interrupted, the class will keep trying to (re)connect, until ShutdownAndWait is called.
+  // Subclasses that extend this method by overriding it must also call the overridden method.
   virtual void BuildAndStart(const std::shared_ptr<grpc::Channel>& channel);
-  // This method closes the connection with ProducerSideService.
-  // Subclasses can extend this method by overriding it, but must also call the overridden method.
+  // This method causes to disconnect from ProducerSideService or to stop trying to reconnect to it.
+  // Subclasses that extend this method by overriding it must also call the overridden method.
   virtual void ShutdownAndWait();
 
   // Subclasses can override this method to be notified of a request to start a capture.
@@ -38,7 +38,7 @@ class CaptureEventProducer {
 
   // Subclasses can use this method to send a batch of CaptureEvents to the ProducerSideService.
   // A full ReceiveCommandsAndSendEventsRequest with event_case() == kBufferedCaptureEvents
-  // needs to be passed to avoid an extra copy from a BufferedCaptureEvents.
+  // needs to be passed to avoid an extra copy from a BufferedCaptureEvents message.
   [[nodiscard]] bool SendCaptureEvents(
       const orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest& send_events_request);
   // Subclasses should use this method to notify the ProducerSideService that
