@@ -13,7 +13,8 @@
 
 namespace orbit_producer {
 
-// This abstract class offers the subclasses methods to communicate with ProducerSideService.
+// This abstract class offers the subclasses methods
+// to connect and communicate with a ProducerSideService.
 class CaptureEventProducer {
  public:
   // Pure virtual destructor, but still with definition (in .cpp file), makes this class abstract.
@@ -22,14 +23,26 @@ class CaptureEventProducer {
   [[nodiscard]] bool IsCapturing() { return is_capturing_; }
 
  protected:
+  // This method establishes the connection with ProducerSideService.
+  // If a connection fails or is interrupted, this class will keep trying to reconnect.
+  // Subclasses can extend this method by overriding it, but must also call the overridden method.
   virtual void BuildAndStart(const std::shared_ptr<grpc::Channel>& channel);
+  // This method closes the connection with ProducerSideService.
+  // Subclasses can extend this method by overriding it, but must also call the overridden method.
   virtual void ShutdownAndWait();
 
+  // Subclasses can override this method to be notified of a request to start a capture.
   virtual void OnCaptureStart();
+  // Subclasses can override this method to be notified of a request to stop the capture.
   virtual void OnCaptureStop();
 
+  // Subclasses can use this method to send a batch of CaptureEvents to the ProducerSideService.
+  // A full ReceiveCommandsAndSendEventsRequest with event_case() == kBufferedCaptureEvents
+  // needs to be passed to avoid an extra copy from a BufferedCaptureEvents.
   [[nodiscard]] bool SendCaptureEvents(
       const orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest& send_events_request);
+  // Subclasses should use this methods to notify the ProducerSideService that
+  // they have sent all their CaptureEvents after the capture has been stopped.
   [[nodiscard]] bool NotifyAllEventsSent();
 
  private:

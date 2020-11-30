@@ -13,8 +13,11 @@ namespace orbit_producer {
 
 // This still abstract implementation of CaptureEventProducer provides a lock-free queue
 // where to write events with low overhead from the fast path where they are produced.
+// The methods EnqueueIntermediateEvent(IfCapturing) allow to enqueue those events.
+//
 // Internally, a thread reads from the lock-free queue and sends CaptureEvents
 // to ProducerSideService using the methods provided by the superclass.
+//
 // Note that the events stored in the lock-free queue, whose type is specified by the
 // type parameter IntermediateEventT, don't need to be CaptureEvents, nor protobufs at all.
 // This is to allow enqueuing objects that are faster to produce than protobufs.
@@ -70,6 +73,8 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
     }
   }
 
+  // Subclasses need to implement this method to convert an IntermediateEventT enqueued
+  // in the internal lock-free buffer to a CaptureEvent to be sent to ProducerSideService.
   [[nodiscard]] virtual orbit_grpc_protos::CaptureEvent TranslateIntermediateEvent(
       IntermediateEventT&& intermediate_event) = 0;
 
