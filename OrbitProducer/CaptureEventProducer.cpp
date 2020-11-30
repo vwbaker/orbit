@@ -162,13 +162,12 @@ void CaptureEventProducer::ConnectAndReceiveCommandsThread() {
 
         // Wait before trying to reconnect, to avoid continuously trying to reconnect
         // when OrbitService is not reachable.
-        if (shutdown_requested_mutex_.ReaderLockWhenWithTimeout(
-                absl::Condition(
-                    +[](bool* shutdown_requested) { return *shutdown_requested; },
-                    &shutdown_requested_),
-                kRetryConnectingDelay)) {
-          shutdown_requested_mutex_.ReaderUnlock();
-        }
+        shutdown_requested_mutex_.ReaderLockWhenWithTimeout(
+            absl::Condition(
+                +[](bool* shutdown_requested) { return *shutdown_requested; },
+                &shutdown_requested_),
+            kRetryConnectingDelay);
+        shutdown_requested_mutex_.ReaderUnlock();
         break;
       }
 
