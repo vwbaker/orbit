@@ -49,11 +49,13 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
     lock_free_queue_.enqueue(std::move(event));
   }
 
-  void EnqueueIntermediateEventIfCapturing(
+  bool EnqueueIntermediateEventIfCapturing(
       const std::function<IntermediateEventT()>& event_builder_if_capturing) {
     if (IsCapturing()) {
       lock_free_queue_.enqueue(event_builder_if_capturing());
+      return true;
     }
+    return false;
   }
 
  protected:

@@ -129,7 +129,7 @@ TEST_F(CaptureEventProducerTest, SentCaptureEventsAndAllEventsSent) {
   EXPECT_TRUE(producer->NotifyAllEventsSent());
 }
 
-TEST_F(CaptureEventProducerTest, RedundantStartStopCaptureCommands) {
+TEST_F(CaptureEventProducerTest, UnexpectedStartStopCaptureCommands) {
   EXPECT_FALSE(producer->IsCapturing());
 
   EXPECT_CALL(*producer, OnCaptureStart).Times(1);
@@ -172,6 +172,7 @@ TEST_F(CaptureEventProducerTest, ServiceDisconnectCausesOnCaptureStop) {
   ::testing::Mock::VerifyAndClearExpectations(&*producer);
 
   EXPECT_CALL(*producer, OnCaptureStop).Times(1);
+  // Disconnect.
   fake_service->FinishRpc();
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_FALSE(producer->IsCapturing());
@@ -205,6 +206,7 @@ TEST_F(CaptureEventProducerTest, SendingMessagesFailsWhenDisconnected) {
   ::testing::Mock::VerifyAndClearExpectations(&*fake_service);
 
   EXPECT_CALL(*producer, OnCaptureStop).Times(1);
+  // Disconnect.
   fake_service->FinishRpc();
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_FALSE(producer->IsCapturing());
