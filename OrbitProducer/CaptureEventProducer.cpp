@@ -41,7 +41,13 @@ void CaptureEventProducer::ShutdownAndWait() {
   CHECK(connect_and_receive_commands_thread_.joinable());
   connect_and_receive_commands_thread_.join();
 
-  producer_side_service_stub_ = nullptr;
+  producer_side_service_stub_.reset();
+  // If producer_side_service_stub_ held the last reference to a gRPC object,
+  // the internal grpc_shutdown will be executed. This can use a detached thread.
+  // From the docs of grpc_shutdown: "The last call to grpc_shutdown will initiate
+  // cleaning up of grpc library internals, which can happen in another thread".
+  // Give that a moment to complete, as otherwise that could lead to a SIGSEGV on exit.
+  std::this_thread::sleep_for(std::chrono::milliseconds{1});
 }
 
 void CaptureEventProducer::OnCaptureStart() { LOG("CaptureEventProducer called OnCaptureStart"); }

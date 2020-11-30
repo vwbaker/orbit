@@ -205,6 +205,7 @@ class LayerLogic {
     if (vulkan_layer_producer_ != nullptr) {
       // TODO: Only do this when DestroyInstance has been called a number of times
       //  equal to the number of times CreateInstance was called.
+      LOG("Taking down VulkanLayerProducer");
       vulkan_layer_producer_->TakeDown();
       vulkan_layer_producer_.reset();
     }
