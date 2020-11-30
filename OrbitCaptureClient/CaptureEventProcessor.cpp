@@ -538,9 +538,14 @@ void CaptureEventProcessor::ProcessGpuCommandBuffers(
     for (const auto& command_buffer : submit_info.command_buffers()) {
       CHECK(first_command_buffer != std::nullopt);
       TimerInfo command_buffer_timer;
-      command_buffer_timer.set_start(command_buffer.begin_gpu_timestamp_ns() -
-                                     first_command_buffer->begin_gpu_timestamp_ns() +
-                                     matching_gpu_job.gpu_hardware_start_time_ns());
+      if (command_buffer.begin_gpu_timestamp_ns() != 0) {
+        command_buffer_timer.set_start(command_buffer.begin_gpu_timestamp_ns() -
+                                       first_command_buffer->begin_gpu_timestamp_ns() +
+                                       matching_gpu_job.gpu_hardware_start_time_ns());
+      } else {
+        command_buffer_timer.set_start(begin_capture_time_ns_);
+      }
+
       command_buffer_timer.set_end(command_buffer.end_gpu_timestamp_ns() -
                                    first_command_buffer->begin_gpu_timestamp_ns() +
                                    matching_gpu_job.gpu_hardware_start_time_ns());

@@ -68,8 +68,6 @@ class SubmissionTracker {
     absl::flat_hash_set<VkCommandBuffer>& associated_cbs = pool_to_command_buffers_.at(pool);
     for (uint32_t i = 0; i < count; ++i) {
       VkCommandBuffer cb = command_buffers[i];
-      CHECK(!associated_cbs.contains(cb));
-      CHECK(!command_buffer_to_device_.contains(cb));
       associated_cbs.insert(cb);
       command_buffer_to_device_[cb] = device;
     }
@@ -117,17 +115,7 @@ class SubmissionTracker {
     if (!IsCapturing()) {
       return;
     }
-    {
-      absl::ReaderMutexLock lock(&mutex_);
-      CHECK(command_buffer_to_state_.contains(command_buffer));
-      CommandBufferState& command_buffer_state = command_buffer_to_state_.at(command_buffer);
-      if (!command_buffer_state.command_buffer_begin_slot_index.has_value()) {
-        return;
-      }
-    }
 
-    // RecordTimestamp will also acquire a reader lock. As we are fine with having multiple readers
-    // we don't need to unlock here.
     uint32_t slot_index = RecordTimestamp(command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
 
     {
@@ -320,12 +308,8 @@ class SubmissionTracker {
         }
 
         // Command buffer timings:
-        if (!state.command_buffer_begin_slot_index.has_value()) {
-          continue;
-        }
-        CHECK(state.command_buffer_end_slot_index.has_value());
         SubmittedCommandBuffer submitted_command_buffer{
-            .command_buffer_begin_slot_index = state.command_buffer_begin_slot_index.value(),
+            .command_buffer_begin_slot_index = state.command_buffer_begin_slot_index,
             .command_buffer_end_slot_index = state.command_buffer_end_slot_index.value()};
         submitted_submit_info.command_buffers.emplace_back(submitted_command_buffer);
 
@@ -366,17 +350,20 @@ class SubmissionTracker {
           orbit_grpc_protos::GpuCommandBuffer* command_buffer_proto =
               submit_info_proto->add_command_buffers();
 
-          uint64_t begin_timestamp = QueryGpuTimestampNs(
-              device, query_pool, completed_command_buffer.command_buffer_begin_slot_index,
-              timestamp_period);
+          if (completed_command_buffer.command_buffer_begin_slot_index.has_value()) {
+            uint32_t slot_index = completed_command_buffer.command_buffer_begin_slot_index.value();
+            uint64_t begin_timestamp =
+                QueryGpuTimestampNs(device, query_pool, slot_index, timestamp_period);
+            command_buffer_proto->set_begin_gpu_timestamp_ns(begin_timestamp);
+
+            query_slots_to_reset.push_back(slot_index);
+          }
 
           uint64_t end_timestamp = QueryGpuTimestampNs(
               device, query_pool, completed_command_buffer.command_buffer_end_slot_index,
               timestamp_period);
 
-          command_buffer_proto->set_begin_gpu_timestamp_ns(begin_timestamp);
           command_buffer_proto->set_end_gpu_timestamp_ns(end_timestamp);
-          query_slots_to_reset.push_back(completed_command_buffer.command_buffer_begin_slot_index);
           query_slots_to_reset.push_back(completed_command_buffer.command_buffer_end_slot_index);
         }
       }
@@ -503,7 +490,7 @@ class SubmissionTracker {
   };
 
   struct SubmittedCommandBuffer {
-    uint32_t command_buffer_begin_slot_index;
+    std::optional<uint32_t> command_buffer_begin_slot_index;
     uint32_t command_buffer_end_slot_index;
   };
 
