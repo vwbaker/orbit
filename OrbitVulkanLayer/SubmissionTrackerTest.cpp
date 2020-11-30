@@ -47,11 +47,104 @@ class MockVulkanLayerProducer : public VulkanLayerProducer {
   MOCK_METHOD(void, EnqueueCaptureEvent, (orbit_grpc_protos::CaptureEvent && capture_event),
               (override));
 
-  MOCK_METHOD(bool, BringUp, (std::string_view unix_domain_socket_path), (override));
+  MOCK_METHOD(void, BringUp, (const std::shared_ptr<grpc::Channel>& channel), (override));
   MOCK_METHOD(void, TakeDown, (), (override));
 };
 
 }  // namespace
+
+class SubmissionTrackerTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    producer = std::make_unique<MockVulkanLayerProducer>();
+    is_capturing = false;
+    auto is_capturing_function = [this]() -> bool { return is_capturing; };
+    EXPECT_CALL(*producer, IsCapturing).WillRepeatedly(Invoke(is_capturing_function));
+  }
+
+  MockDispatchTable dispatch_table;
+  MockTimerQueryPool timer_query_pool;
+  MockDeviceManager device_manager;
+  std::unique_ptr<MockVulkanLayerProducer> producer;
+  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker =
+      SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool>(
+          0, &dispatch_table, &timer_query_pool, &device_manager,
+          absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
+
+  VkDevice device = {};
+  VkCommandPool command_pool = {};
+  VkCommandBuffer command_buffer = {};
+  VkQueryPool query_pool = {};
+  VkPhysicalDevice physical_device;
+  VkPhysicalDeviceProperties physical_device_properties = {.limits = {.timestampPeriod = 1.f}};
+  VkQueue queue = {};
+
+  bool is_capturing;
+
+  static constexpr uint32_t kSlotIndex1 = 32;
+  static constexpr uint32_t kSlotIndex2 = 33;
+  static constexpr uint32_t kSlotIndex3 = 34;
+  static constexpr uint32_t kSlotIndex4 = 35;
+
+  static constexpr uint64_t kTimestamp1 = 11;
+  static constexpr uint64_t kTimestamp2 = 12;
+  static constexpr uint64_t kTimestamp3 = 13;
+  static constexpr uint64_t kTimestamp4 = 14;
+
+  std::function<bool(VkDevice, uint32_t*)> mock_next_ready_query_slot_function_1 =
+      [](VkDevice /*device*/, uint32_t* allocated_slot) -> bool {
+    *allocated_slot = kSlotIndex1;
+    return true;
+  };
+
+  std::function<bool(VkDevice, uint32_t*)> mock_next_ready_query_slot_function_2 =
+      [](VkDevice /*device*/, uint32_t* allocated_slot) -> bool {
+    *allocated_slot = kSlotIndex2;
+    return true;
+  };
+
+  std::function<bool(VkDevice, uint32_t*)> mock_next_ready_query_slot_function_3 =
+      [](VkDevice /*device*/, uint32_t* allocated_slot) -> bool {
+    *allocated_slot = kSlotIndex3;
+    return true;
+  };
+
+  std::function<bool(VkDevice, uint32_t*)> mock_next_ready_query_slot_function_4 =
+      [](VkDevice /*device*/, uint32_t* allocated_slot) -> bool {
+    *allocated_slot = kSlotIndex4;
+    return true;
+  };
+
+  PFN_vkGetQueryPoolResults mock_get_query_pool_results_function_all_ready =
+      +[](VkDevice /*device*/, VkQueryPool /*queryPool*/, uint32_t first_query,
+          uint32_t query_count, size_t /*dataSize*/, void* data, VkDeviceSize /*stride*/,
+          VkQueryResultFlags flags) -> VkResult {
+    EXPECT_EQ(query_count, 1);
+    EXPECT_NE((flags & VK_QUERY_RESULT_64_BIT), 0);
+    switch (first_query) {
+      case kSlotIndex1:
+        *absl::bit_cast<uint64_t*>(data) = kTimestamp1;
+        break;
+      case kSlotIndex2:
+        *absl::bit_cast<uint64_t*>(data) = kTimestamp2;
+        break;
+      case kSlotIndex3:
+        *absl::bit_cast<uint64_t*>(data) = kTimestamp3;
+        break;
+      case kSlotIndex4:
+        *absl::bit_cast<uint64_t*>(data) = kTimestamp4;
+        break;
+      default:
+        UNREACHABLE();
+    }
+    return VK_SUCCESS;
+  };
+
+  PFN_vkGetQueryPoolResults mock_get_query_pool_results_function_not_ready =
+      +[](VkDevice /*device*/, VkQueryPool /*queryPool*/, uint32_t /*first_query*/,
+          uint32_t /*query_count*/, size_t /*dataSize*/, void* /*data*/, VkDeviceSize /*stride*/,
+          VkQueryResultFlags /*flags*/) -> VkResult { return VK_NOT_READY; };
+};
 
 TEST(SubmissionTracker, CanBeInitialized) {
   MockDispatchTable dispatch_table;
@@ -63,138 +156,59 @@ TEST(SubmissionTracker, CanBeInitialized) {
       0, &dispatch_table, &timer_query_pool, &device_manager, &producer);
 }
 
-TEST(SubmissionTracker, CannotTrackTheSameCommandBufferTwice) {
-  MockDispatchTable dispatch_table;
-  MockTimerQueryPool timer_query_pool;
-  MockDeviceManager device_manager;
-  std::unique_ptr<VulkanLayerProducer> producer = std::make_unique<MockVulkanLayerProducer>();
-
-  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
-      0, &dispatch_table, &timer_query_pool, &device_manager, &producer);
-
-  VkDevice device = {};
-  VkCommandPool pool = {};
-  VkCommandBuffer command_buffer = {};
-  tracker.TrackCommandBuffers(device, pool, &command_buffer, 1);
-  EXPECT_DEATH({ tracker.TrackCommandBuffers(device, pool, &command_buffer, 1); }, "");
+TEST_F(SubmissionTrackerTest, CannotTrackTheSameCommandBufferTwice) {
+  tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
+  EXPECT_DEATH({ tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1); }, "");
 }
 
-TEST(SubmissionTracker, CannotUntrackAnUntrackedCommandBuffer) {
-  MockDispatchTable dispatch_table;
-  MockTimerQueryPool timer_query_pool;
-  MockDeviceManager device_manager;
-  std::unique_ptr<VulkanLayerProducer> producer = std::make_unique<MockVulkanLayerProducer>();
-
-  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
-      0, &dispatch_table, &timer_query_pool, &device_manager, &producer);
-
-  VkDevice device = {};
-  VkCommandPool pool = {};
-  VkCommandBuffer command_buffer = {};
-  EXPECT_DEATH({ tracker.UntrackCommandBuffers(device, pool, &command_buffer, 1); }, "");
+TEST_F(SubmissionTrackerTest, CannotUntrackAnUntrackedCommandBuffer) {
+  EXPECT_DEATH({ tracker.UntrackCommandBuffers(device, command_pool, &command_buffer, 1); }, "");
 }
 
-TEST(SubmissionTracker, CanTrackCommandBufferAgainAfterUntrack) {
-  MockDispatchTable dispatch_table;
-  MockTimerQueryPool timer_query_pool;
-  MockDeviceManager device_manager;
-  std::unique_ptr<VulkanLayerProducer> producer = std::make_unique<MockVulkanLayerProducer>();
-
-  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
-      0, &dispatch_table, &timer_query_pool, &device_manager, &producer);
-
-  VkDevice device = {};
-  VkCommandPool pool = {};
-  VkCommandBuffer command_buffer = {};
-  tracker.TrackCommandBuffers(device, pool, &command_buffer, 1);
-  tracker.UntrackCommandBuffers(device, pool, &command_buffer, 1);
-  tracker.TrackCommandBuffers(device, pool, &command_buffer, 1);
+TEST_F(SubmissionTrackerTest, CanTrackCommandBufferAgainAfterUntrack) {
+  tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
+  tracker.UntrackCommandBuffers(device, command_pool, &command_buffer, 1);
+  tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
 }
 
-TEST(SubmissionTracker, MarkCommandBufferBeginWontWriteTimestampsWhenNotCapturing) {
-  MockDispatchTable dispatch_table;
-  MockTimerQueryPool timer_query_pool;
-  MockDeviceManager device_manager;
-  std::unique_ptr<MockVulkanLayerProducer> producer = std::make_unique<MockVulkanLayerProducer>();
-
-  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
-      0, &dispatch_table, &timer_query_pool, &device_manager,
-      absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
-
-  VkDevice device = {};
-  VkCommandPool command_pool = {};
-  VkCommandBuffer command_buffer = {};
-
-  EXPECT_CALL(*producer, IsCapturing).Times(1).WillOnce(Return(false));
+TEST_F(SubmissionTrackerTest, MarkCommandBufferBeginWontWriteTimestampsWhenNotCapturing) {
   EXPECT_CALL(timer_query_pool, NextReadyQuerySlot).Times(0);
 
+  is_capturing = false;
   tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
   tracker.MarkCommandBufferBegin(command_buffer);
 }
 
-TEST(SubmissionTracker, MarkDebugMarkersWontWriteTimestampsWhenNotCapturing) {
-  MockDispatchTable dispatch_table;
-  MockTimerQueryPool timer_query_pool;
-  MockDeviceManager device_manager;
-  std::unique_ptr<MockVulkanLayerProducer> producer = std::make_unique<MockVulkanLayerProducer>();
-
-  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
-      0, &dispatch_table, &timer_query_pool, &device_manager,
-      absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
-
-  VkDevice device = {};
-  VkCommandPool command_pool = {};
-  VkCommandBuffer command_buffer = {};
-
-  EXPECT_CALL(*producer, IsCapturing).Times(3).WillRepeatedly(Return(false));
+TEST_F(SubmissionTrackerTest, MarkDebugMarkersWontWriteTimestampsWhenNotCapturing) {
   EXPECT_CALL(timer_query_pool, NextReadyQuerySlot).Times(0);
 
+  is_capturing = false;
   tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
   tracker.MarkCommandBufferBegin(command_buffer);
   tracker.MarkDebugMarkerBegin(command_buffer, "Test", {});
   tracker.MarkDebugMarkerEnd(command_buffer);
 }
 
-TEST(SubmissionTracker, MarkCommandBufferBeginWillWriteTimestampWhenCapturing) {
-  MockDispatchTable dispatch_table;
-  MockTimerQueryPool timer_query_pool;
-  MockDeviceManager device_manager;
-  std::unique_ptr<MockVulkanLayerProducer> producer = std::make_unique<MockVulkanLayerProducer>();
-
-  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
-      0, &dispatch_table, &timer_query_pool, &device_manager,
-      absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
-
-  VkDevice device = {};
-  VkCommandPool command_pool = {};
-  VkCommandBuffer command_buffer = {};
-  VkQueryPool query_pool = {};
-
+TEST_F(SubmissionTrackerTest, MarkCommandBufferBeginWillWriteTimestampWhenCapturing) {
   // We cannot capture anything in that lambda as we need to cast it to a function pointer.
   static bool was_called = false;
-  static constexpr uint32_t kSlotIndex = 32;
 
   PFN_vkCmdWriteTimestamp mock_write_timestamp_function =
       +[](VkCommandBuffer /*command_buffer*/, VkPipelineStageFlagBits /*pipeline_stage*/,
           VkQueryPool /*query_pool*/, uint32_t query) {
-        EXPECT_EQ(query, kSlotIndex);
+        EXPECT_EQ(query, kSlotIndex1);
         was_called = true;
       };
-  auto mock_next_ready_query_slot_function = [](VkDevice /*device*/,
-                                                uint32_t* allocated_slot) -> bool {
-    *allocated_slot = kSlotIndex;
-    return true;
-  };
 
-  EXPECT_CALL(*producer, IsCapturing).Times(1).WillOnce(Return(true));
   EXPECT_CALL(timer_query_pool, GetQueryPool).Times(1).WillOnce(Return(query_pool));
   EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
       .Times(1)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function));
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_1));
   EXPECT_CALL(dispatch_table, CmdWriteTimestamp)
       .Times(1)
       .WillOnce(Return(mock_write_timestamp_function));
 
+  is_capturing = true;
   tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
   tracker.MarkCommandBufferBegin(command_buffer);
 
@@ -202,35 +216,12 @@ TEST(SubmissionTracker, MarkCommandBufferBeginWillWriteTimestampWhenCapturing) {
   was_called = false;
 }
 
-TEST(SubmissionTracker, ResetCommandBufferShouldRollbackUnsubmittedSlots) {
-  MockDispatchTable dispatch_table;
-  MockTimerQueryPool timer_query_pool;
-  MockDeviceManager device_manager;
-  std::unique_ptr<MockVulkanLayerProducer> producer = std::make_unique<MockVulkanLayerProducer>();
-
-  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
-      0, &dispatch_table, &timer_query_pool, &device_manager,
-      absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
-
-  VkDevice device = {};
-  VkCommandPool command_pool = {};
-  VkCommandBuffer command_buffer = {};
-  VkQueryPool query_pool = {};
-
-  // We cannot capture anything in that lambda as we need to cast it to a function pointer.
-  constexpr uint32_t kSlotIndex = 32;
-
-  auto mock_next_ready_query_slot_function = [](VkDevice /*device*/,
-                                                uint32_t* allocated_slot) -> bool {
-    *allocated_slot = kSlotIndex;
-    return true;
-  };
-
+TEST_F(SubmissionTrackerTest, ResetCommandBufferShouldRollbackUnsubmittedSlots) {
   EXPECT_CALL(*producer, IsCapturing).Times(1).WillOnce(Return(true));
   EXPECT_CALL(timer_query_pool, GetQueryPool).Times(1).WillOnce(Return(query_pool));
   EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
       .Times(1)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function));
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_1));
   std::vector<uint32_t> actual_slots_to_rollback;
   EXPECT_CALL(timer_query_pool, RollbackPendingQuerySlots)
       .Times(1)
@@ -239,41 +230,19 @@ TEST(SubmissionTracker, ResetCommandBufferShouldRollbackUnsubmittedSlots) {
       .Times(1)
       .WillOnce(Return(dummy_write_timestamp_function));
 
+  is_capturing = true;
   tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
   tracker.MarkCommandBufferBegin(command_buffer);
   tracker.ResetCommandBuffer(command_buffer);
 
-  EXPECT_THAT(actual_slots_to_rollback, ElementsAre(kSlotIndex));
+  EXPECT_THAT(actual_slots_to_rollback, ElementsAre(kSlotIndex1));
 }
 
-TEST(SubmissionTracker, ResetCommandPoolShouldRollbackUnsubmittedSlots) {
-  MockDispatchTable dispatch_table;
-  MockTimerQueryPool timer_query_pool;
-  MockDeviceManager device_manager;
-  std::unique_ptr<MockVulkanLayerProducer> producer = std::make_unique<MockVulkanLayerProducer>();
-
-  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
-      0, &dispatch_table, &timer_query_pool, &device_manager,
-      absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
-
-  VkDevice device = {};
-  VkCommandPool command_pool = {};
-  VkCommandBuffer command_buffer = {};
-  VkQueryPool query_pool = {};
-
-  constexpr uint32_t kSlotIndex = 32;
-
-  auto mock_next_ready_query_slot_function = [](VkDevice /*device*/,
-                                                uint32_t* allocated_slot) -> bool {
-    *allocated_slot = kSlotIndex;
-    return true;
-  };
-
-  EXPECT_CALL(*producer, IsCapturing).Times(1).WillOnce(Return(true));
+TEST_F(SubmissionTrackerTest, ResetCommandPoolShouldRollbackUnsubmittedSlots) {
   EXPECT_CALL(timer_query_pool, GetQueryPool).Times(1).WillOnce(Return(query_pool));
   EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
       .Times(1)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function));
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_1));
   std::vector<uint32_t> actual_slots_to_rollback;
   EXPECT_CALL(timer_query_pool, RollbackPendingQuerySlots)
       .Times(1)
@@ -282,109 +251,38 @@ TEST(SubmissionTracker, ResetCommandPoolShouldRollbackUnsubmittedSlots) {
       .Times(1)
       .WillOnce(Return(dummy_write_timestamp_function));
 
+  is_capturing = true;
   tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
   tracker.MarkCommandBufferBegin(command_buffer);
   tracker.ResetCommandPool(command_pool);
 
-  EXPECT_THAT(actual_slots_to_rollback, ElementsAre(kSlotIndex));
+  EXPECT_THAT(actual_slots_to_rollback, ElementsAre(kSlotIndex1));
 }
 
-TEST(SubmissionTracker, MarkCommandBufferEndWontWriteTimestampsWhenNotCapturing) {
-  MockDispatchTable dispatch_table;
-  MockTimerQueryPool timer_query_pool;
-  MockDeviceManager device_manager;
-  std::unique_ptr<MockVulkanLayerProducer> producer = std::make_unique<MockVulkanLayerProducer>();
-
-  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
-      0, &dispatch_table, &timer_query_pool, &device_manager,
-      absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
-
-  VkDevice device = {};
-  VkCommandPool command_pool = {};
-  VkCommandBuffer command_buffer = {};
-
-  EXPECT_CALL(*producer, IsCapturing).Times(2).WillRepeatedly(Return(false));
+TEST_F(SubmissionTrackerTest, MarkCommandBufferEndWontWriteTimestampsWhenNotCapturing) {
   EXPECT_CALL(timer_query_pool, NextReadyQuerySlot).Times(0);
+  EXPECT_CALL(dispatch_table, CmdWriteTimestamp).Times(0);
 
+  is_capturing = false;
   tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
   tracker.MarkCommandBufferBegin(command_buffer);
   tracker.MarkCommandBufferEnd(command_buffer);
 }
 
-TEST(SubmissionTracker, MarkCommandBufferEndWontWriteTimestampsWhenNotCapturedBegin) {
-  MockDispatchTable dispatch_table;
-  MockTimerQueryPool timer_query_pool;
-  MockDeviceManager device_manager;
-  std::unique_ptr<MockVulkanLayerProducer> producer = std::make_unique<MockVulkanLayerProducer>();
-
-  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
-      0, &dispatch_table, &timer_query_pool, &device_manager,
-      absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
-
-  VkDevice device = {};
-  VkCommandPool command_pool = {};
-  VkCommandBuffer command_buffer = {};
-
-  EXPECT_CALL(*producer, IsCapturing).Times(2).WillOnce(Return(false)).WillOnce(Return(true));
+TEST_F(SubmissionTrackerTest, MarkCommandBufferEndWontWriteTimestampsWhenNotCapturedBegin) {
   EXPECT_CALL(timer_query_pool, NextReadyQuerySlot).Times(0);
-
+  is_capturing = false;
   tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
   tracker.MarkCommandBufferBegin(command_buffer);
+  is_capturing = true;
   tracker.MarkCommandBufferEnd(command_buffer);
 }
 
-TEST(SubmissionTracker, CanRetrieveCommandBufferTimestampsForACompleteSubmission) {
-  MockDispatchTable dispatch_table;
-  MockTimerQueryPool timer_query_pool;
-  MockDeviceManager device_manager;
-  std::unique_ptr<MockVulkanLayerProducer> producer = std::make_unique<MockVulkanLayerProducer>();
-
-  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
-      0, &dispatch_table, &timer_query_pool, &device_manager,
-      absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
-
-  VkDevice device = {};
-  VkPhysicalDevice physical_device = {};
-  VkCommandPool command_pool = {};
-  VkCommandBuffer command_buffer = {};
-  VkQueryPool query_pool = {};
-  VkPhysicalDeviceProperties physical_device_properties = {.limits = {.timestampPeriod = 1.f}};
-  VkQueue queue = {};
+TEST_F(SubmissionTrackerTest, CanRetrieveCommandBufferTimestampsForACompleteSubmission) {
   VkSubmitInfo submit_info = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                               .pNext = nullptr,
                               .pCommandBuffers = &command_buffer,
                               .commandBufferCount = 1};
-
-  constexpr uint32_t kBeginSlot = 32;
-  constexpr uint32_t kEndSlot = 33;
-  auto mock_next_ready_query_slot_function_1 = [](VkDevice /*device*/,
-                                                  uint32_t* allocated_slot) -> bool {
-    *allocated_slot = kBeginSlot;
-    return true;
-  };
-  auto mock_next_ready_query_slot_function_2 = [](VkDevice /*device*/,
-                                                  uint32_t* allocated_slot) -> bool {
-    *allocated_slot = kEndSlot;
-    return true;
-  };
-  constexpr uint64_t kBeginGpuTimestamp = 1;
-  constexpr uint64_t kEndGpuTimestamp = 2;
-  PFN_vkGetQueryPoolResults mock_get_query_pool_results_function =
-      +[](VkDevice /*device*/, VkQueryPool /*queryPool*/, uint32_t first_query,
-          uint32_t query_count, size_t /*dataSize*/, void* data, VkDeviceSize /*stride*/,
-          VkQueryResultFlags flags) -> VkResult {
-    EXPECT_EQ(query_count, 1);
-    EXPECT_NE((flags & VK_QUERY_RESULT_64_BIT), 0);
-    EXPECT_TRUE(first_query == kBeginSlot || first_query == kEndSlot);
-    if (first_query == kBeginSlot) {
-      *absl::bit_cast<uint64_t*>(data) = kBeginGpuTimestamp;
-    } else {
-      *absl::bit_cast<uint64_t*>(data) = kEndGpuTimestamp;
-    }
-    return VK_SUCCESS;
-  };
-
-  EXPECT_CALL(*producer, IsCapturing).WillRepeatedly(Return(true));
   EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
       .Times(2)
       .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
@@ -393,7 +291,7 @@ TEST(SubmissionTracker, CanRetrieveCommandBufferTimestampsForACompleteSubmission
   EXPECT_CALL(dispatch_table, CmdWriteTimestamp)
       .WillRepeatedly(Return(dummy_write_timestamp_function));
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
-      .WillRepeatedly(Return(mock_get_query_pool_results_function));
+      .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   EXPECT_CALL(device_manager, GetPhysicalDeviceOfLogicalDevice)
       .WillRepeatedly(Return(physical_device));
   EXPECT_CALL(device_manager, GetPhysicalDeviceProperties)
@@ -407,6 +305,7 @@ TEST(SubmissionTracker, CanRetrieveCommandBufferTimestampsForACompleteSubmission
       };
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
 
+  is_capturing = true;
   tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
   tracker.MarkCommandBufferBegin(command_buffer);
   tracker.MarkCommandBufferEnd(command_buffer);
@@ -417,7 +316,7 @@ TEST(SubmissionTracker, CanRetrieveCommandBufferTimestampsForACompleteSubmission
   uint64_t post_submit_time = MonotonicTimestampNs();
   tracker.CompleteSubmits(device);
 
-  EXPECT_THAT(actual_reset_slots, UnorderedElementsAre(kBeginSlot, kEndSlot));
+  EXPECT_THAT(actual_reset_slots, UnorderedElementsAre(kSlotIndex1, kSlotIndex2));
   EXPECT_TRUE(actual_capture_event.has_gpu_queue_submission());
   const orbit_grpc_protos::GpuQueueSubmission& actual_queue_submission =
       actual_capture_event.gpu_queue_submission();
@@ -436,66 +335,17 @@ TEST(SubmissionTracker, CanRetrieveCommandBufferTimestampsForACompleteSubmission
   const orbit_grpc_protos::GpuCommandBuffer& actual_command_buffer =
       actual_submit_info.command_buffers(0);
 
-  EXPECT_EQ(kBeginGpuTimestamp, actual_command_buffer.begin_gpu_timestamp_ns());
-  EXPECT_EQ(kEndGpuTimestamp, actual_command_buffer.end_gpu_timestamp_ns());
+  EXPECT_EQ(kTimestamp1, actual_command_buffer.begin_gpu_timestamp_ns());
+  EXPECT_EQ(kTimestamp2, actual_command_buffer.end_gpu_timestamp_ns());
 }
 
-TEST(SubmissionTracker, CanRetrieveCommandBufferTimestampsForACompleteSubmissionAtSecondPresent) {
-  MockDispatchTable dispatch_table;
-  MockTimerQueryPool timer_query_pool;
-  MockDeviceManager device_manager;
-  std::unique_ptr<MockVulkanLayerProducer> producer = std::make_unique<MockVulkanLayerProducer>();
-
-  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
-      0, &dispatch_table, &timer_query_pool, &device_manager,
-      absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
-
-  VkDevice device = {};
-  VkPhysicalDevice physical_device = {};
-  VkCommandPool command_pool = {};
-  VkCommandBuffer command_buffer = {};
-  VkQueryPool query_pool = {};
-  VkPhysicalDeviceProperties physical_device_properties = {.limits = {.timestampPeriod = 1.f}};
-  VkQueue queue = {};
+TEST_F(SubmissionTrackerTest,
+       CanRetrieveCommandBufferTimestampsForACompleteSubmissionAtSecondPresent) {
   VkSubmitInfo submit_info = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                               .pNext = nullptr,
                               .pCommandBuffers = &command_buffer,
                               .commandBufferCount = 1};
 
-  constexpr uint32_t kBeginSlot = 32;
-  constexpr uint32_t kEndSlot = 33;
-  auto mock_next_ready_query_slot_function_1 = [](VkDevice /*device*/,
-                                                  uint32_t* allocated_slot) -> bool {
-    *allocated_slot = kBeginSlot;
-    return true;
-  };
-  auto mock_next_ready_query_slot_function_2 = [](VkDevice /*device*/,
-                                                  uint32_t* allocated_slot) -> bool {
-    *allocated_slot = kEndSlot;
-    return true;
-  };
-  constexpr uint64_t kBeginGpuTimestamp = 1;
-  constexpr uint64_t kEndGpuTimestamp = 2;
-  PFN_vkGetQueryPoolResults mock_get_query_pool_results_function_ready =
-      +[](VkDevice /*device*/, VkQueryPool /*queryPool*/, uint32_t first_query,
-          uint32_t query_count, size_t /*dataSize*/, void* data, VkDeviceSize /*stride*/,
-          VkQueryResultFlags flags) -> VkResult {
-    EXPECT_EQ(query_count, 1);
-    EXPECT_NE((flags & VK_QUERY_RESULT_64_BIT), 0);
-    EXPECT_TRUE(first_query == kBeginSlot || first_query == kEndSlot);
-    if (first_query == kBeginSlot) {
-      *absl::bit_cast<uint64_t*>(data) = kBeginGpuTimestamp;
-    } else {
-      *absl::bit_cast<uint64_t*>(data) = kEndGpuTimestamp;
-    }
-    return VK_SUCCESS;
-  };
-  PFN_vkGetQueryPoolResults mock_get_query_pool_results_function_not_ready =
-      +[](VkDevice /*device*/, VkQueryPool /*queryPool*/, uint32_t /*first_query*/,
-          uint32_t /*query_count*/, size_t /*dataSize*/, void* /*data*/, VkDeviceSize /*stride*/,
-          VkQueryResultFlags /*flags*/) -> VkResult { return VK_NOT_READY; };
-
-  EXPECT_CALL(*producer, IsCapturing).WillRepeatedly(Return(true));
   EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
       .Times(2)
       .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
@@ -505,7 +355,7 @@ TEST(SubmissionTracker, CanRetrieveCommandBufferTimestampsForACompleteSubmission
       .WillRepeatedly(Return(dummy_write_timestamp_function));
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillOnce(Return(mock_get_query_pool_results_function_not_ready))
-      .WillRepeatedly(Return(mock_get_query_pool_results_function_ready));
+      .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   EXPECT_CALL(device_manager, GetPhysicalDeviceOfLogicalDevice)
       .WillRepeatedly(Return(physical_device));
   EXPECT_CALL(device_manager, GetPhysicalDeviceProperties)
@@ -519,6 +369,7 @@ TEST(SubmissionTracker, CanRetrieveCommandBufferTimestampsForACompleteSubmission
       };
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
 
+  is_capturing = true;
   tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
   tracker.MarkCommandBufferBegin(command_buffer);
   tracker.MarkCommandBufferEnd(command_buffer);
@@ -530,7 +381,7 @@ TEST(SubmissionTracker, CanRetrieveCommandBufferTimestampsForACompleteSubmission
   tracker.CompleteSubmits(device);
   tracker.CompleteSubmits(device);
 
-  EXPECT_THAT(actual_reset_slots, UnorderedElementsAre(kBeginSlot, kEndSlot));
+  EXPECT_THAT(actual_reset_slots, UnorderedElementsAre(kSlotIndex1, kSlotIndex2));
   EXPECT_TRUE(actual_capture_event.has_gpu_queue_submission());
   const orbit_grpc_protos::GpuQueueSubmission& actual_queue_submission =
       actual_capture_event.gpu_queue_submission();
@@ -549,49 +400,15 @@ TEST(SubmissionTracker, CanRetrieveCommandBufferTimestampsForACompleteSubmission
   const orbit_grpc_protos::GpuCommandBuffer& actual_command_buffer =
       actual_submit_info.command_buffers(0);
 
-  EXPECT_EQ(kBeginGpuTimestamp, actual_command_buffer.begin_gpu_timestamp_ns());
-  EXPECT_EQ(kEndGpuTimestamp, actual_command_buffer.end_gpu_timestamp_ns());
+  EXPECT_EQ(kTimestamp1, actual_command_buffer.begin_gpu_timestamp_ns());
+  EXPECT_EQ(kTimestamp2, actual_command_buffer.end_gpu_timestamp_ns());
 }
 
-TEST(SubmissionTracker, StopCaptureBeforeSubmissionWillResetTheSlots) {
-  MockDispatchTable dispatch_table;
-  MockTimerQueryPool timer_query_pool;
-  MockDeviceManager device_manager;
-  std::unique_ptr<MockVulkanLayerProducer> producer = std::make_unique<MockVulkanLayerProducer>();
-
-  SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
-      0, &dispatch_table, &timer_query_pool, &device_manager,
-      absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
-
-  VkDevice device = {};
-  VkCommandPool command_pool = {};
-  VkCommandBuffer command_buffer = {};
-  VkQueryPool query_pool = {};
-  VkQueue queue = {};
+TEST_F(SubmissionTrackerTest, StopCaptureBeforeSubmissionWillResetTheSlots) {
   VkSubmitInfo submit_info = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                               .pNext = nullptr,
                               .pCommandBuffers = &command_buffer,
                               .commandBufferCount = 1};
-
-  constexpr uint32_t kBeginSlot = 32;
-  constexpr uint32_t kEndSlot = 33;
-  auto mock_next_ready_query_slot_function_1 = [](VkDevice /*device*/,
-                                                  uint32_t* allocated_slot) -> bool {
-    *allocated_slot = kBeginSlot;
-    return true;
-  };
-  auto mock_next_ready_query_slot_function_2 = [](VkDevice /*device*/,
-                                                  uint32_t* allocated_slot) -> bool {
-    *allocated_slot = kEndSlot;
-    return true;
-  };
-
-  EXPECT_CALL(*producer, IsCapturing)
-      .Times(4)
-      .WillOnce(Return(true))
-      .WillOnce(Return(true))
-      .WillOnce(Return(false))
-      .WillOnce(Return(false));
   EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
       .Times(2)
       .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
@@ -605,14 +422,15 @@ TEST(SubmissionTracker, StopCaptureBeforeSubmissionWillResetTheSlots) {
 
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(0);
 
+  is_capturing = true;
   tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
   tracker.MarkCommandBufferBegin(command_buffer);
   tracker.MarkCommandBufferEnd(command_buffer);
-  tracker.PersistSubmitInformation(queue, 1, &submit_info);
+  is_capturing = false, tracker.PersistSubmitInformation(queue, 1, &submit_info);
   tracker.DoPostSubmitQueue(queue, 1, &submit_info);
   tracker.CompleteSubmits(device);
 
-  EXPECT_THAT(actual_reset_slots, UnorderedElementsAre(kBeginSlot, kEndSlot));
+  EXPECT_THAT(actual_reset_slots, UnorderedElementsAre(kSlotIndex1, kSlotIndex2));
 }
 
 // TODO: stop capturing after submission but before present -> reset slot + get result
