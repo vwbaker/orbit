@@ -233,6 +233,31 @@ class SubmissionTrackerTest : public ::testing::Test {
     EXPECT_SUBMIT_EQ(actual_begin_marker_meta_info, test_pre_submit_time, test_post_submit_time,
                      expected_tid);
   }
+
+  void EXPECT_TWO_NEXT_READY_QUERY_SLOT_CALLS() {
+    EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
+        .Times(2)
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_2));
+  }
+  void EXPECT_FOUR_NEXT_READY_QUERY_SLOT_CALLS() {
+    EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
+        .Times(4)
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_4));
+  }
+  void EXPECT_SIX_NEXT_READY_QUERY_SLOT_CALLS() {
+    EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
+        .Times(6)
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_4))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_5))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_6));
+  }
 };
 
 TEST(SubmissionTracker, CanBeInitialized) {
@@ -361,10 +386,7 @@ TEST_F(SubmissionTrackerTest, MarkCommandBufferEndWillWriteTimestampsWhenNotCapt
 }
 
 TEST_F(SubmissionTrackerTest, CanRetrieveCommandBufferTimestampsForACompleteSubmission) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(2)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2));
+  EXPECT_TWO_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots;
@@ -395,10 +417,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveCommandBufferTimestampsForACompleteSubm
 
 TEST_F(SubmissionTrackerTest,
        CanRetrieveCommandBufferTimestampsForACompleteSubmissionAtSecondPresent) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(2)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2));
+  EXPECT_TWO_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillOnce(Return(mock_get_query_pool_results_function_not_ready))
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
@@ -430,10 +449,7 @@ TEST_F(SubmissionTrackerTest,
 }
 
 TEST_F(SubmissionTrackerTest, StopCaptureBeforeSubmissionWillResetTheSlots) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(2)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2));
+  EXPECT_TWO_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults).Times(0);
   std::vector<uint32_t> actual_reset_slots;
   EXPECT_CALL(timer_query_pool, ResetQuerySlots).Times(1).WillOnce(SaveArg<1>(&actual_reset_slots));
@@ -454,10 +470,7 @@ TEST_F(SubmissionTrackerTest, StopCaptureBeforeSubmissionWillResetTheSlots) {
 }
 
 TEST_F(SubmissionTrackerTest, CanRetrieveCommandBufferTimestampsWhenNotCapturingAtPresent) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(2)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2));
+  EXPECT_TWO_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots;
@@ -488,10 +501,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveCommandBufferTimestampsWhenNotCapturing
 }
 
 TEST_F(SubmissionTrackerTest, StopCaptureWhileSubmissionWillStillYieldResults) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(2)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2));
+  EXPECT_TWO_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots;
@@ -580,10 +590,7 @@ TEST_F(SubmissionTrackerTest, WillResetProperlyWhenStartStopAndStartACaptureWith
 }
 
 TEST_F(SubmissionTrackerTest, CannotReuseCommandBufferWithoutReset) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(2)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2));
+  EXPECT_TWO_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   EXPECT_CALL(timer_query_pool, ResetQuerySlots).Times(1);
@@ -635,10 +642,7 @@ TEST_F(SubmissionTrackerTest, DebugMarkerBeginWillWriteTimestampWhenCapturing) {
         was_called = true;
       };
 
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(2)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2));
+  EXPECT_TWO_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, CmdWriteTimestamp)
       .Times(2)
       .WillOnce(Return(dummy_write_timestamp_function))
@@ -654,10 +658,7 @@ TEST_F(SubmissionTrackerTest, DebugMarkerBeginWillWriteTimestampWhenCapturing) {
 }
 
 TEST_F(SubmissionTrackerTest, ResetCommandBufferShouldRollbackUnsubmittedMarkerSlots) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(2)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2));
+  EXPECT_TWO_NEXT_READY_QUERY_SLOT_CALLS();
   std::vector<uint32_t> actual_slots_to_rollback;
   EXPECT_CALL(timer_query_pool, RollbackPendingQuerySlots)
       .Times(1)
@@ -694,12 +695,7 @@ TEST_F(SubmissionTrackerTest, DebugMarkerEndWontWriteTimestampsWhenNotCapturing)
 }
 
 TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerTimestampsForACompleteSubmission) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(4)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_4));
+  EXPECT_FOUR_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots;
@@ -754,10 +750,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerTimestampsForACompleteSubmis
 }
 
 TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerEndEvenWhenNotCapturedBegin) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(2)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2));
+  EXPECT_TWO_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots;
@@ -808,14 +801,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerEndEvenWhenNotCapturedBegin)
 }
 
 TEST_F(SubmissionTrackerTest, CanRetrieveNextedDebugMarkerTimestampsForACompleteSubmission) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(6)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_4))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_5))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_6));
+  EXPECT_SIX_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots;
@@ -887,12 +873,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveNextedDebugMarkerTimestampsForAComplete
 
 TEST_F(SubmissionTrackerTest,
        CanRetrieveNextedDebugMarkerTimestampsForASubmissionMissingFirstBegin) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(4)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_4));
+  EXPECT_FOUR_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots;
@@ -963,14 +944,7 @@ TEST_F(SubmissionTrackerTest,
 }  // namespace orbit_vulkan_layer
 
 TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissions) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(6)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_4))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_5))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_6));
+  EXPECT_SIX_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots_1;
@@ -1050,14 +1024,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissions) {
 }
 
 TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissionsEvenWhenNotCapturingBegin) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(6)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_4))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_5))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_6));
+  EXPECT_FOUR_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots_1;
@@ -1087,19 +1054,15 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissionsEvenWhen
 
   internal::Color expected_color{1.f, 0.8f, 0.6f, 0.4f};
 
-  pid_t tid = GetCurrentThreadId();
-
   is_capturing = false;
   tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
   tracker.MarkCommandBufferBegin(command_buffer);
   tracker.MarkDebugMarkerBegin(command_buffer, text, expected_color);
   is_capturing = true;
   tracker.MarkCommandBufferEnd(command_buffer);
-  uint64_t pre_submit_time_1 = MonotonicTimestampNs();
   std::optional<internal::QueueSubmission> queue_submission_optional_1 =
       tracker.PreSubmission(1, &submit_info);
   tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional_1);
-  uint64_t post_submit_time_1 = MonotonicTimestampNs();
   tracker.CompleteSubmits(device);
   tracker.ResetCommandBuffer(command_buffer);
   tracker.MarkCommandBufferBegin(command_buffer);
@@ -1110,16 +1073,15 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissionsEvenWhen
   tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional_2);
   tracker.CompleteSubmits(device);
 
-  EXPECT_THAT(actual_reset_slots_1, UnorderedElementsAre(kSlotIndex1, kSlotIndex3));
-  EXPECT_THAT(actual_reset_slots_2,
-              UnorderedElementsAre(kSlotIndex2, kSlotIndex4, kSlotIndex5, kSlotIndex6));
+  EXPECT_THAT(actual_reset_slots_1, UnorderedElementsAre(kSlotIndex1));
+  EXPECT_THAT(actual_reset_slots_2, UnorderedElementsAre(kSlotIndex2, kSlotIndex3, kSlotIndex4));
   ASSERT_EQ(actual_capture_events.size(), 2);
 
   const orbit_grpc_protos::CaptureEvent& actual_capture_event_1 = actual_capture_events.at(0);
   EXPECT_TRUE(actual_capture_event_1.has_gpu_queue_submission());
   const orbit_grpc_protos::GpuQueueSubmission& actual_queue_submission_1 =
       actual_capture_event_1.gpu_queue_submission();
-  EXPECT_EQ(actual_queue_submission_1.num_begin_markers(), 1);
+  EXPECT_EQ(actual_queue_submission_1.num_begin_markers(), 0);
   EXPECT_EQ(actual_queue_submission_1.completed_markers_size(), 0);
 
   const orbit_grpc_protos::CaptureEvent& actual_capture_event_2 = actual_capture_events.at(1);
@@ -1131,21 +1093,13 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissionsEvenWhen
   const orbit_grpc_protos::GpuDebugMarker& actual_debug_marker =
       actual_queue_submission_2.completed_markers(0);
 
-  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker, kTimestamp5, expected_text_key, expected_color,
+  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker, kTimestamp3, expected_text_key, expected_color,
                              0);
-  EXPECT_DEBUG_MARKER_BEGIN_EQ(actual_debug_marker, kTimestamp2, pre_submit_time_1,
-                               post_submit_time_1, tid);
+  EXPECT_FALSE(actual_debug_marker.has_begin_marker());
 }
 
 TEST_F(SubmissionTrackerTest, ResetSlotsOnDebugMarkerAcrossTwoSubmissionsWhenNotCapturingEnd) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(6)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_4))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_5))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_6));
+  EXPECT_SIX_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots_1;
@@ -1205,12 +1159,7 @@ TEST_F(SubmissionTrackerTest, ResetSlotsOnDebugMarkerAcrossTwoSubmissionsWhenNot
 }
 
 TEST_F(SubmissionTrackerTest, ResetDebugMarkerSlotsWhenStopBeforeASubmission) {
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(4)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_4));
+  EXPECT_FOUR_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults).Times(0);
   std::vector<uint32_t> actual_reset_slots;
   EXPECT_CALL(timer_query_pool, ResetQuerySlots).Times(1).WillOnce(SaveArg<1>(&actual_reset_slots));
@@ -1241,12 +1190,7 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBuffer) {
           1, &dispatch_table, &timer_query_pool, &device_manager,
           absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
 
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(4)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_4));
+  EXPECT_FOUR_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots;
@@ -1311,14 +1255,7 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBufferAcro
       SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool>(
           1, &dispatch_table, &timer_query_pool, &device_manager,
           absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
-  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(6)
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_4))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_5))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_6));
+  EXPECT_SIX_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots_1;
