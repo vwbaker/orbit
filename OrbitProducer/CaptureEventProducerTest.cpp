@@ -112,7 +112,7 @@ TEST_F(CaptureEventProducerTest, OnCaptureStartStopAndIsCapturing) {
   EXPECT_FALSE(producer->IsCapturing());
 }
 
-TEST_F(CaptureEventProducerTest, SentCaptureEventsAndAllEventsSent) {
+TEST_F(CaptureEventProducerTest, SendCaptureEventsAndAllEventsSent) {
   {
     ::testing::InSequence in_sequence;
     EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(2);
@@ -120,10 +120,7 @@ TEST_F(CaptureEventProducerTest, SentCaptureEventsAndAllEventsSent) {
   }
 
   orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest send_events_request;
-  send_events_request.mutable_buffered_capture_events()
-      ->mutable_capture_events()
-      ->Add()
-      ->mutable_gpu_queue_submission();
+  send_events_request.mutable_buffered_capture_events()->mutable_capture_events()->Add();
   EXPECT_TRUE(producer->SendCaptureEvents(send_events_request));
   EXPECT_TRUE(producer->SendCaptureEvents(send_events_request));
   EXPECT_TRUE(producer->NotifyAllEventsSent());
@@ -194,10 +191,7 @@ TEST_F(CaptureEventProducerTest, SendingMessagesFailsWhenDisconnected) {
     EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(1);
   }
   orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest send_events_request;
-  send_events_request.mutable_buffered_capture_events()
-      ->mutable_capture_events()
-      ->Add()
-      ->mutable_gpu_queue_submission();
+  send_events_request.mutable_buffered_capture_events()->mutable_capture_events()->Add();
   EXPECT_TRUE(producer->SendCaptureEvents(send_events_request));
   EXPECT_TRUE(producer->SendCaptureEvents(send_events_request));
   EXPECT_TRUE(producer->NotifyAllEventsSent());
@@ -236,10 +230,7 @@ TEST_F(CaptureEventProducerTest, DisconnectAndReconnect) {
     EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(1);
   }
   orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest send_events_request;
-  send_events_request.mutable_buffered_capture_events()
-      ->mutable_capture_events()
-      ->Add()
-      ->mutable_gpu_queue_submission();
+  send_events_request.mutable_buffered_capture_events()->mutable_capture_events()->Add();
   EXPECT_TRUE(producer->SendCaptureEvents(send_events_request));
   EXPECT_TRUE(producer->SendCaptureEvents(send_events_request));
   EXPECT_TRUE(producer->NotifyAllEventsSent());
