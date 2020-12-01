@@ -50,8 +50,10 @@ class LockFreeBufferCaptureEventProducerTest : public ::testing::Test {
 
     buffer_producer->ShutdownAndWait();
     buffer_producer.reset();
+  }
 
-    fake_service->FinishRpc();
+  void StopService() {
+    fake_service->FinishAndDisallowRpc();
     fake_server->Shutdown();
     fake_server->Wait();
 
@@ -262,13 +264,82 @@ TEST_F(LockFreeBufferCaptureEventProducerTest, ServiceDisconnects) {
   ::testing::Mock::VerifyAndClearExpectations(&*fake_service);
 
   // Disconnect.
-  fake_service->FinishRpc();
+  fake_service->FinishAndDisallowRpc();
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
   EXPECT_FALSE(buffer_producer->IsCapturing());
 
   EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(0);
   EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(0);
   EXPECT_FALSE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
+}
+
+TEST_F(LockFreeBufferCaptureEventProducerTest, DisconnectAndReconnect) {
+  EXPECT_FALSE(buffer_producer->IsCapturing());
+
+  EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(0);
+  EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(0);
+  EXPECT_FALSE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
+
+  ::testing::Mock::VerifyAndClearExpectations(&*fake_service);
+
+  fake_service->SendStartCaptureCommand();
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
+  EXPECT_TRUE(buffer_producer->IsCapturing());
+
+  int32_t capture_events_received_count = 0;
+  ON_CALL(*fake_service, OnCaptureEventsReceived)
+      .WillByDefault([&capture_events_received_count](int32_t count) {
+        capture_events_received_count += count;
+      });
+  EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(::testing::Between(1, 3));
+  EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(0);
+  EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
+  EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
+  EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
+  EXPECT_EQ(capture_events_received_count, 3);
+
+  ::testing::Mock::VerifyAndClearExpectations(&*fake_service);
+
+  // Reduce reconnection delay before disconnecting.
+  static constexpr uint64_t kReconnectionDelayMs = 50;
+  buffer_producer->SetReconnectionDelayMs(kReconnectionDelayMs);
+
+  // Disconnect.
+  fake_service->FinishAndDisallowRpc();
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
+  EXPECT_FALSE(buffer_producer->IsCapturing());
+
+  EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(0);
+  EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(0);
+  EXPECT_FALSE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
+
+  ::testing::Mock::VerifyAndClearExpectations(&*fake_service);
+
+  // Wait for reconnection.
+  fake_service->ReAllowRpc();
+  std::this_thread::sleep_for(std::chrono::milliseconds{2 * kReconnectionDelayMs});
+
+  fake_service->SendStartCaptureCommand();
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
+  EXPECT_TRUE(buffer_producer->IsCapturing());
+
+  EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(::testing::Between(1, 2));
+  EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(0);
+  EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
+  EXPECT_TRUE(buffer_producer->EnqueueIntermediateEventIfCapturing([] { return ""; }));
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
+  EXPECT_EQ(capture_events_received_count, 5);
+
+  ::testing::Mock::VerifyAndClearExpectations(&*fake_service);
+
+  EXPECT_CALL(*fake_service, OnCaptureEventsReceived).Times(0);
+  EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(1);
+  fake_service->SendStopCaptureCommand();
+  std::this_thread::sleep_for(kWaitMessagesSentDuration);
+  EXPECT_FALSE(buffer_producer->IsCapturing());
 }
 
 }  // namespace orbit_producer

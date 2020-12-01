@@ -114,7 +114,6 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
           should_send_all_events_sent_mutex_.Unlock();
           if (!NotifyAllEventsSent()) {
             ERROR("Notifying that all CaptureEvents have been sent");
-            break;
           }
           continue;
         }

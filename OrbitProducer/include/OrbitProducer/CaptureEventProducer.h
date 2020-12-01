@@ -22,6 +22,10 @@ class CaptureEventProducer {
 
   [[nodiscard]] bool IsCapturing() { return is_capturing_; }
 
+  // This method allows to specify how frequently a reconnection with the service should
+  // be attempted when the connection fails or is interrupted. The default is 5 seconds.
+  void SetReconnectionDelayMs(uint64_t ms) { reconnection_delay_ms_ = ms; }
+
  protected:
   // This method establishes the connection with ProducerSideService. If a connection fails or
   // is interrupted, the class will keep trying to (re)connect, until ShutdownAndWait is called.
@@ -62,6 +66,8 @@ class CaptureEventProducer {
 
   bool shutdown_requested_ = false;
   absl::Mutex shutdown_requested_mutex_;
+
+  std::atomic<uint64_t> reconnection_delay_ms_ = 5000;
 };
 
 }  // namespace orbit_producer

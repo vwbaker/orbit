@@ -20,6 +20,9 @@ class FakeProducerSideService : public orbit_grpc_protos::ProducerSideService::S
       override {
     EXPECT_EQ(context_, nullptr);
     EXPECT_EQ(stream_, nullptr);
+    if (!rpc_allowed) {
+      return grpc::Status::CANCELLED;
+    }
     context_ = context;
     stream_ = stream;
 
@@ -60,14 +63,17 @@ class FakeProducerSideService : public orbit_grpc_protos::ProducerSideService::S
     EXPECT_TRUE(written);
   }
 
-  void FinishRpc() {
+  void FinishAndDisallowRpc() {
+    rpc_allowed = false;
     if (context_ != nullptr) {
+      EXPECT_NE(stream_, nullptr);
       context_->TryCancel();
       context_ = nullptr;
-      EXPECT_NE(stream_, nullptr);
     }
     stream_ = nullptr;
   }
+
+  void ReAllowRpc() { rpc_allowed = true; }
 
   MOCK_METHOD(void, OnCaptureEventsReceived, (int32_t count), ());
   MOCK_METHOD(void, OnAllEventsSentReceived, (), ());
@@ -77,6 +83,7 @@ class FakeProducerSideService : public orbit_grpc_protos::ProducerSideService::S
   grpc::ServerReaderWriter<orbit_grpc_protos::ReceiveCommandsAndSendEventsResponse,
                            orbit_grpc_protos::ReceiveCommandsAndSendEventsRequest>* stream_ =
       nullptr;
+  std::atomic<bool> rpc_allowed = true;
 };
 
 }  // namespace orbit_producer

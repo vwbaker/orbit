@@ -110,7 +110,6 @@ bool CaptureEventProducer::NotifyAllEventsSent() {
 
 void CaptureEventProducer::ConnectAndReceiveCommandsThread() {
   CHECK(producer_side_service_stub_ != nullptr);
-  static constexpr absl::Duration kRetryConnectingDelay = absl::Seconds(5);
 
   while (true) {
     {
@@ -138,7 +137,7 @@ void CaptureEventProducer::ConnectAndReceiveCommandsThread() {
               absl::Condition(
                   +[](bool* shutdown_requested) { return *shutdown_requested; },
                   &shutdown_requested_),
-              kRetryConnectingDelay)) {
+              absl::Milliseconds(static_cast<int64_t>(reconnection_delay_ms_)))) {
         shutdown_requested_mutex_.ReaderUnlock();
       }
       continue;
@@ -172,7 +171,7 @@ void CaptureEventProducer::ConnectAndReceiveCommandsThread() {
             absl::Condition(
                 +[](bool* shutdown_requested) { return *shutdown_requested; },
                 &shutdown_requested_),
-            kRetryConnectingDelay);
+            absl::Milliseconds(static_cast<int64_t>(reconnection_delay_ms_)));
         shutdown_requested_mutex_.ReaderUnlock();
         break;
       }
