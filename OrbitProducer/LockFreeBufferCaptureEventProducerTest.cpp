@@ -135,8 +135,8 @@ TEST_F(LockFreeBufferCaptureEventProducerTest, EnqueueIntermediateEvent) {
   EXPECT_CALL(*fake_service, OnAllEventsSentReceived).Times(0);
   buffer_producer->EnqueueIntermediateEvent("");
   {
-    static const std::string kIntermediateEventPassedByConstRef;
-    buffer_producer->EnqueueIntermediateEvent(kIntermediateEventPassedByConstRef);
+    std::string intermediate_event_passed_by_const_ref;
+    buffer_producer->EnqueueIntermediateEvent(intermediate_event_passed_by_const_ref);
   }
   buffer_producer->EnqueueIntermediateEvent("");
   std::this_thread::sleep_for(kWaitMessagesSentDuration);
