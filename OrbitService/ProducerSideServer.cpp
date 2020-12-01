@@ -26,7 +26,6 @@ bool ProducerSideServer::BuildAndStart(std::string_view unix_domain_socket_path)
 
   // When OrbitService runs as root, also allow non-root producers
   // (e.g., the game) to communicate over the Unix domain socket.
-  // TODO(dpallotti,b/174028631): Verify security implications and concerns.
   if (chmod(std::string{unix_domain_socket_path}.c_str(), 0777) != 0) {
     ERROR("Changing mode bits to 777 of \"%s\": %s", unix_domain_socket_path, SafeStrerror(errno));
     server_->Shutdown();
