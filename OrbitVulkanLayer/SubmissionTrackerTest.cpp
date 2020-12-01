@@ -213,13 +213,14 @@ class SubmissionTrackerTest : public ::testing::Test {
 
   void EXPECT_DEBUG_MARKER_END_EQ(const orbit_grpc_protos::GpuDebugMarker& actual_debug_marker,
                                   uint64_t expected_end_timestamp, uint64_t expected_text_key,
-                                  Color color) {
+                                  Color expected_color, int32_t expected_depth) {
     EXPECT_EQ(actual_debug_marker.end_gpu_timestamp_ns(), expected_end_timestamp);
-    EXPECT_EQ(actual_debug_marker.color().red(), color.red);
-    EXPECT_EQ(actual_debug_marker.color().green(), color.green);
-    EXPECT_EQ(actual_debug_marker.color().blue(), color.blue);
-    EXPECT_EQ(actual_debug_marker.color().alpha(), color.alpha);
+    EXPECT_EQ(actual_debug_marker.color().red(), expected_color.red);
+    EXPECT_EQ(actual_debug_marker.color().green(), expected_color.green);
+    EXPECT_EQ(actual_debug_marker.color().blue(), expected_color.blue);
+    EXPECT_EQ(actual_debug_marker.color().alpha(), expected_color.alpha);
     EXPECT_EQ(actual_debug_marker.text_key(), expected_text_key);
+    EXPECT_EQ(actual_debug_marker.depth(), expected_depth);
   }
 
   void EXPECT_DEBUG_MARKER_BEGIN_EQ(const orbit_grpc_protos::GpuDebugMarker& actual_debug_marker,
@@ -505,7 +506,23 @@ TEST_F(SubmissionTrackerTest, StopCaptureWhileSubmissionWillResetTheSlots) {
   EXPECT_THAT(actual_reset_slots, UnorderedElementsAre(kSlotIndex1, kSlotIndex2));
 }
 
-TEST_F(SubmissionTrackerTest, StartCaptureWhileSubmissionWillNotCrash) {
+TEST_F(SubmissionTrackerTest, StartCaptureJustBeforeSubmissionWillWriteData) {
+  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot).Times(0);
+  EXPECT_CALL(dispatch_table, GetQueryPoolResults).Times(0);
+  EXPECT_CALL(timer_query_pool, ResetQuerySlots).Times(0);
+  EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(0);
+
+  is_capturing = false;
+  tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
+  tracker.MarkCommandBufferBegin(command_buffer);
+  tracker.MarkCommandBufferEnd(command_buffer);
+  is_capturing = true;
+  std::optional<uint64_t> pre_submit_timestamp = tracker.PreSubmission();
+  tracker.DoPostSubmitQueue(queue, 1, &submit_info, pre_submit_timestamp);
+  tracker.CompleteSubmits(device);
+}
+
+TEST_F(SubmissionTrackerTest, StartCaptureWhileSubmissionWillWriteData) {
   EXPECT_CALL(timer_query_pool, NextReadyQuerySlot).Times(0);
   EXPECT_CALL(dispatch_table, GetQueryPoolResults).Times(0);
   EXPECT_CALL(timer_query_pool, ResetQuerySlots).Times(0);
@@ -686,7 +703,8 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerTimestampsForACompleteSubmis
   const orbit_grpc_protos::GpuDebugMarker& actual_debug_marker =
       actual_queue_submission.completed_markers(0);
 
-  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker, kTimestamp3, expected_text_key, expected_color);
+  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker, kTimestamp3, expected_text_key, expected_color,
+                             0);
   EXPECT_DEBUG_MARKER_BEGIN_EQ(actual_debug_marker, kTimestamp2, pre_submit_time, post_submit_time,
                                tid);
 }
@@ -739,17 +757,20 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerEndEvenWhenNotCapturedBegin)
   const orbit_grpc_protos::GpuDebugMarker& actual_debug_marker =
       actual_queue_submission.completed_markers(0);
 
-  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker, kTimestamp1, expected_text_key, expected_color);
+  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker, kTimestamp1, expected_text_key, expected_color,
+                             0);
   EXPECT_FALSE(actual_debug_marker.has_begin_marker());
 }
 
 TEST_F(SubmissionTrackerTest, CanRetrieveNextedDebugMarkerTimestampsForACompleteSubmission) {
   EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
-      .Times(4)
+      .Times(6)
       .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
       .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
       .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
-      .WillOnce(Invoke(mock_next_ready_query_slot_function_4));
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_4))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_5))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_6));
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots;
@@ -795,25 +816,200 @@ TEST_F(SubmissionTrackerTest, CanRetrieveNextedDebugMarkerTimestampsForAComplete
   uint64_t post_submit_time = MonotonicTimestampNs();
   tracker.CompleteSubmits(device);
 
-  EXPECT_THAT(actual_reset_slots,
-              UnorderedElementsAre(kSlotIndex1, kSlotIndex2, kSlotIndex3, kSlotIndex4));
+  EXPECT_THAT(actual_reset_slots, UnorderedElementsAre(kSlotIndex1, kSlotIndex2, kSlotIndex3,
+                                                       kSlotIndex4, kSlotIndex5, kSlotIndex6));
   EXPECT_TRUE(actual_capture_event.has_gpu_queue_submission());
   const orbit_grpc_protos::GpuQueueSubmission& actual_queue_submission =
       actual_capture_event.gpu_queue_submission();
-  EXPECT_EQ(actual_queue_submission.num_begin_markers(), 1);
-  EXPECT_EQ(actual_queue_submission.completed_markers_size(), 1);
-  const orbit_grpc_protos::GpuDebugMarker& actual_debug_marker =
+  EXPECT_EQ(actual_queue_submission.num_begin_markers(), 2);
+  EXPECT_EQ(actual_queue_submission.completed_markers_size(), 2);
+  const orbit_grpc_protos::GpuDebugMarker& actual_debug_marker_inner =
       actual_queue_submission.completed_markers(0);
+  const orbit_grpc_protos::GpuDebugMarker& actual_debug_marker_outer =
+      actual_queue_submission.completed_markers(1);
 
-  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker, kTimestamp3, expected_text_key_outer,
-                             expected_color);
-  EXPECT_DEBUG_MARKER_BEGIN_EQ(actual_debug_marker, kTimestamp2, pre_submit_time, post_submit_time,
-                               tid);
+  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker_outer, kTimestamp5, expected_text_key_outer,
+                             expected_color, 0);
+  EXPECT_DEBUG_MARKER_BEGIN_EQ(actual_debug_marker_outer, kTimestamp2, pre_submit_time,
+                               post_submit_time, tid);
+
+  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker_inner, kTimestamp4, expected_text_key_inner,
+                             expected_color, 1);
+  EXPECT_DEBUG_MARKER_BEGIN_EQ(actual_debug_marker_inner, kTimestamp3, pre_submit_time,
+                               post_submit_time, tid);
 }  // namespace orbit_vulkan_layer
 
-// TODO: nested debug markers
-// TODO: debug markers across submissions
-// TODO: debug markers across submissions, miss begin marker (not capturing)
+TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissions) {
+  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
+      .Times(6)
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_4))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_5))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_6));
+  EXPECT_CALL(dispatch_table, GetQueryPoolResults)
+      .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
+  std::vector<uint32_t> actual_reset_slots_1;
+  std::vector<uint32_t> actual_reset_slots_2;
+  EXPECT_CALL(timer_query_pool, ResetQuerySlots)
+      .Times(2)
+      .WillOnce(SaveArg<1>(&actual_reset_slots_1))
+      .WillOnce(SaveArg<1>(&actual_reset_slots_2));
+  std::vector<orbit_grpc_protos::CaptureEvent> actual_capture_events;
+  auto mock_enqueue_capture_event =
+      [&actual_capture_events](orbit_grpc_protos::CaptureEvent&& capture_event) {
+        actual_capture_events.emplace_back(std::move(capture_event));
+      };
+
+  const char* text = "Text";
+  constexpr uint64_t expected_text_key = 111;
+  auto mock_intern_string_inf_necessary_and_get_key = [&text](std::string str) {
+    EXPECT_STREQ(text, str.c_str());
+    return expected_text_key;
+  };
+  EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey)
+      .Times(1)
+      .WillOnce(Invoke(mock_intern_string_inf_necessary_and_get_key));
+  EXPECT_CALL(*producer, EnqueueCaptureEvent)
+      .Times(2)
+      .WillRepeatedly(Invoke(mock_enqueue_capture_event));
+
+  Color expected_color{1.f, 0.8f, 0.6f, 0.4f};
+
+  pid_t tid = GetCurrentThreadId();
+
+  is_capturing = true;
+  tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
+  tracker.MarkCommandBufferBegin(command_buffer);
+  tracker.MarkDebugMarkerBegin(command_buffer, text, expected_color);
+  tracker.MarkCommandBufferEnd(command_buffer);
+  uint64_t pre_submit_time_1 = MonotonicTimestampNs();
+  std::optional<uint64_t> pre_submit_timestamp_1 = tracker.PreSubmission();
+  tracker.DoPostSubmitQueue(queue, 1, &submit_info, pre_submit_timestamp_1);
+  uint64_t post_submit_time_1 = MonotonicTimestampNs();
+  tracker.CompleteSubmits(device);
+  tracker.ResetCommandBuffer(command_buffer);
+  tracker.MarkCommandBufferBegin(command_buffer);
+  tracker.MarkDebugMarkerEnd(command_buffer);
+  tracker.MarkCommandBufferEnd(command_buffer);
+  std::optional<uint64_t> pre_submit_timestamp_2 = tracker.PreSubmission();
+  tracker.DoPostSubmitQueue(queue, 1, &submit_info, pre_submit_timestamp_2);
+  tracker.CompleteSubmits(device);
+
+  EXPECT_THAT(actual_reset_slots_1, UnorderedElementsAre(kSlotIndex1, kSlotIndex3));
+  EXPECT_THAT(actual_reset_slots_2,
+              UnorderedElementsAre(kSlotIndex2, kSlotIndex4, kSlotIndex5, kSlotIndex6));
+  ASSERT_EQ(actual_capture_events.size(), 2);
+
+  const orbit_grpc_protos::CaptureEvent& actual_capture_event_1 = actual_capture_events.at(0);
+  EXPECT_TRUE(actual_capture_event_1.has_gpu_queue_submission());
+  const orbit_grpc_protos::GpuQueueSubmission& actual_queue_submission_1 =
+      actual_capture_event_1.gpu_queue_submission();
+  EXPECT_EQ(actual_queue_submission_1.num_begin_markers(), 1);
+  EXPECT_EQ(actual_queue_submission_1.completed_markers_size(), 0);
+
+  const orbit_grpc_protos::CaptureEvent& actual_capture_event_2 = actual_capture_events.at(1);
+  EXPECT_TRUE(actual_capture_event_2.has_gpu_queue_submission());
+  const orbit_grpc_protos::GpuQueueSubmission& actual_queue_submission_2 =
+      actual_capture_event_2.gpu_queue_submission();
+  EXPECT_EQ(actual_queue_submission_2.num_begin_markers(), 0);
+  EXPECT_EQ(actual_queue_submission_2.completed_markers_size(), 1);
+  const orbit_grpc_protos::GpuDebugMarker& actual_debug_marker =
+      actual_queue_submission_2.completed_markers(0);
+
+  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker, kTimestamp5, expected_text_key, expected_color,
+                             0);
+  EXPECT_DEBUG_MARKER_BEGIN_EQ(actual_debug_marker, kTimestamp2, pre_submit_time_1,
+                               post_submit_time_1, tid);
+}
+
+TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissionsEvenWhenNotCapturingBegin) {
+  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
+      .Times(6)
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_4))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_5))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_6));
+  EXPECT_CALL(dispatch_table, GetQueryPoolResults)
+      .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
+  std::vector<uint32_t> actual_reset_slots_1;
+  std::vector<uint32_t> actual_reset_slots_2;
+  EXPECT_CALL(timer_query_pool, ResetQuerySlots)
+      .Times(2)
+      .WillOnce(SaveArg<1>(&actual_reset_slots_1))
+      .WillOnce(SaveArg<1>(&actual_reset_slots_2));
+  std::vector<orbit_grpc_protos::CaptureEvent> actual_capture_events;
+  auto mock_enqueue_capture_event =
+      [&actual_capture_events](orbit_grpc_protos::CaptureEvent&& capture_event) {
+        actual_capture_events.emplace_back(std::move(capture_event));
+      };
+
+  const char* text = "Text";
+  constexpr uint64_t expected_text_key = 111;
+  auto mock_intern_string_inf_necessary_and_get_key = [&text](std::string str) {
+    EXPECT_STREQ(text, str.c_str());
+    return expected_text_key;
+  };
+  EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey)
+      .Times(1)
+      .WillOnce(Invoke(mock_intern_string_inf_necessary_and_get_key));
+  EXPECT_CALL(*producer, EnqueueCaptureEvent)
+      .Times(2)
+      .WillRepeatedly(Invoke(mock_enqueue_capture_event));
+
+  Color expected_color{1.f, 0.8f, 0.6f, 0.4f};
+
+  pid_t tid = GetCurrentThreadId();
+
+  is_capturing = false;
+  tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
+  tracker.MarkCommandBufferBegin(command_buffer);
+  tracker.MarkDebugMarkerBegin(command_buffer, text, expected_color);
+  is_capturing = true;
+  tracker.MarkCommandBufferEnd(command_buffer);
+  uint64_t pre_submit_time_1 = MonotonicTimestampNs();
+  std::optional<uint64_t> pre_submit_timestamp_1 = tracker.PreSubmission();
+  tracker.DoPostSubmitQueue(queue, 1, &submit_info, pre_submit_timestamp_1);
+  uint64_t post_submit_time_1 = MonotonicTimestampNs();
+  tracker.CompleteSubmits(device);
+  tracker.ResetCommandBuffer(command_buffer);
+  tracker.MarkCommandBufferBegin(command_buffer);
+  tracker.MarkDebugMarkerEnd(command_buffer);
+  tracker.MarkCommandBufferEnd(command_buffer);
+  std::optional<uint64_t> pre_submit_timestamp_2 = tracker.PreSubmission();
+  tracker.DoPostSubmitQueue(queue, 1, &submit_info, pre_submit_timestamp_2);
+  tracker.CompleteSubmits(device);
+
+  EXPECT_THAT(actual_reset_slots_1, UnorderedElementsAre(kSlotIndex1, kSlotIndex3));
+  EXPECT_THAT(actual_reset_slots_2,
+              UnorderedElementsAre(kSlotIndex2, kSlotIndex4, kSlotIndex5, kSlotIndex6));
+  ASSERT_EQ(actual_capture_events.size(), 2);
+
+  const orbit_grpc_protos::CaptureEvent& actual_capture_event_1 = actual_capture_events.at(0);
+  EXPECT_TRUE(actual_capture_event_1.has_gpu_queue_submission());
+  const orbit_grpc_protos::GpuQueueSubmission& actual_queue_submission_1 =
+      actual_capture_event_1.gpu_queue_submission();
+  EXPECT_EQ(actual_queue_submission_1.num_begin_markers(), 1);
+  EXPECT_EQ(actual_queue_submission_1.completed_markers_size(), 0);
+
+  const orbit_grpc_protos::CaptureEvent& actual_capture_event_2 = actual_capture_events.at(1);
+  EXPECT_TRUE(actual_capture_event_2.has_gpu_queue_submission());
+  const orbit_grpc_protos::GpuQueueSubmission& actual_queue_submission_2 =
+      actual_capture_event_2.gpu_queue_submission();
+  EXPECT_EQ(actual_queue_submission_2.num_begin_markers(), 0);
+  EXPECT_EQ(actual_queue_submission_2.completed_markers_size(), 1);
+  const orbit_grpc_protos::GpuDebugMarker& actual_debug_marker =
+      actual_queue_submission_2.completed_markers(0);
+
+  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker, kTimestamp5, expected_text_key, expected_color,
+                             0);
+  EXPECT_DEBUG_MARKER_BEGIN_EQ(actual_debug_marker, kTimestamp2, pre_submit_time_1,
+                               post_submit_time_1, tid);
+}
+
 // TODO: debug markers across submissions, miss end marker (not capturing)
 // TODO: debug markers, stop capturing before submission
 // TODO: debug markers limited by depth

@@ -602,6 +602,8 @@ class SubmissionTracker {
     VkResult result_status = dispatch_table_->GetQueryPoolResults(device)(
         device, query_pool, slot_index, 1, sizeof(timestamp), &timestamp, kResultStride,
         VK_QUERY_RESULT_64_BIT);
+    // TODO: That should be rather an if and if it is false, we need to push back the submission for
+    // later
     CHECK(result_status == VK_SUCCESS);
 
     return static_cast<uint64_t>(static_cast<double>(timestamp) * timestamp_period);
