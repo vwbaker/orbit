@@ -106,6 +106,7 @@ class SubmissionTracker {
     uint32_t slot_index = RecordTimestamp(command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
     {
       absl::WriterMutexLock lock(&mutex_);
+      CHECK(command_buffer_to_state_.contains(command_buffer));
       command_buffer_to_state_.at(command_buffer).command_buffer_begin_slot_index =
           std::make_optional(slot_index);
     }
@@ -220,11 +221,13 @@ class SubmissionTracker {
                command_buffer_index < submit_info.commandBufferCount; ++command_buffer_index) {
             VkCommandBuffer command_buffer = submit_info.pCommandBuffers[command_buffer_index];
             if (device == VK_NULL_HANDLE) {
+              CHECK(command_buffer_to_device_.contains(command_buffer));
               device = command_buffer_to_device_.at(command_buffer);
             }
             if (!command_buffer_to_state_.contains(command_buffer)) {
               continue;
             }
+            CHECK(command_buffer_to_state_.contains(command_buffer));
             CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
             if (state.command_buffer_begin_slot_index.has_value()) {
               reset_slots.push_back(state.command_buffer_begin_slot_index.value());
@@ -259,6 +262,7 @@ class SubmissionTracker {
     QueueSubmission queue_submission = {};
     queue_submission.meta_information.thread_id = GetCurrentThreadId();
     queue_submission.meta_information.post_submission_cpu_timestamp = MonotonicTimestampNs();
+    CHECK(pre_submit_timestamp.has_value());
     queue_submission.meta_information.pre_submission_cpu_timestamp = pre_submit_timestamp.value();
 
     for (uint32_t submit_index = 0; submit_index < submit_count; ++submit_index) {
@@ -308,11 +312,15 @@ class SubmissionTracker {
         }
 
         // Command buffer timings:
-        SubmittedCommandBuffer submitted_command_buffer{
-            .command_buffer_begin_slot_index = state.command_buffer_begin_slot_index,
-            .command_buffer_end_slot_index = state.command_buffer_end_slot_index.value()};
-        submitted_submit_info.command_buffers.emplace_back(submitted_command_buffer);
 
+        // If we neither recorded the end nor the begin of a command buffer, we have no information
+        // to send.
+        if (state.command_buffer_end_slot_index.has_value()) {
+          SubmittedCommandBuffer submitted_command_buffer{
+              .command_buffer_begin_slot_index = state.command_buffer_begin_slot_index,
+              .command_buffer_end_slot_index = state.command_buffer_end_slot_index.value()};
+          submitted_submit_info.command_buffers.emplace_back(submitted_command_buffer);
+        }
         command_buffer_to_state_.erase(command_buffer);
       }
     }
@@ -320,6 +328,7 @@ class SubmissionTracker {
     if (!queue_to_submissions_.contains(queue)) {
       queue_to_submissions_[queue] = {};
     }
+    CHECK(queue_to_submissions_.contains(queue));
     queue_to_submissions_.at(queue).emplace_back(std::move(queue_submission));
   }
 
@@ -416,7 +425,9 @@ class SubmissionTracker {
     if (!command_buffer_to_state_.contains(command_buffer)) {
       return;
     }
+    CHECK(command_buffer_to_state_.contains(command_buffer));
     CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
+    CHECK(command_buffer_to_device_.contains(command_buffer));
     VkDevice device = command_buffer_to_device_.at(command_buffer);
     std::vector<uint32_t> marker_slots_to_rollback = {};
     if (state.command_buffer_begin_slot_index.has_value()) {
@@ -442,6 +453,7 @@ class SubmissionTracker {
       if (!pool_to_command_buffers_.contains(command_pool)) {
         return;
       }
+      CHECK(pool_to_command_buffers_.contains(command_pool));
       command_buffers = pool_to_command_buffers_.at(command_pool);
     }
     for (const auto& command_buffer : command_buffers) {

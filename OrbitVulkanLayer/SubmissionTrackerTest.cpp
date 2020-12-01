@@ -96,6 +96,8 @@ class SubmissionTrackerTest : public ::testing::Test {
   static constexpr uint32_t kSlotIndex2 = 33;
   static constexpr uint32_t kSlotIndex3 = 34;
   static constexpr uint32_t kSlotIndex4 = 35;
+  static constexpr uint32_t kSlotIndex5 = 36;
+  static constexpr uint32_t kSlotIndex6 = 37;
 
   const std::function<bool(VkDevice, uint32_t*)> mock_next_ready_query_slot_function_1 =
       [](VkDevice /*device*/, uint32_t* allocated_slot) -> bool {
@@ -120,11 +122,23 @@ class SubmissionTrackerTest : public ::testing::Test {
     *allocated_slot = kSlotIndex4;
     return true;
   };
+  const std::function<bool(VkDevice, uint32_t*)> mock_next_ready_query_slot_function_5 =
+      [](VkDevice /*device*/, uint32_t* allocated_slot) -> bool {
+    *allocated_slot = kSlotIndex5;
+    return true;
+  };
+  const std::function<bool(VkDevice, uint32_t*)> mock_next_ready_query_slot_function_6 =
+      [](VkDevice /*device*/, uint32_t* allocated_slot) -> bool {
+    *allocated_slot = kSlotIndex6;
+    return true;
+  };
 
   static constexpr uint64_t kTimestamp1 = 11;
   static constexpr uint64_t kTimestamp2 = 12;
   static constexpr uint64_t kTimestamp3 = 13;
   static constexpr uint64_t kTimestamp4 = 14;
+  static constexpr uint64_t kTimestamp5 = 15;
+  static constexpr uint64_t kTimestamp6 = 16;
 
   const PFN_vkGetQueryPoolResults mock_get_query_pool_results_function_all_ready =
       +[](VkDevice /*device*/, VkQueryPool /*queryPool*/, uint32_t first_query,
@@ -144,6 +158,12 @@ class SubmissionTrackerTest : public ::testing::Test {
         break;
       case kSlotIndex4:
         *absl::bit_cast<uint64_t*>(data) = kTimestamp4;
+        break;
+      case kSlotIndex5:
+        *absl::bit_cast<uint64_t*>(data) = kTimestamp5;
+        break;
+      case kSlotIndex6:
+        *absl::bit_cast<uint64_t*>(data) = kTimestamp6;
         break;
       default:
         UNREACHABLE();
@@ -222,11 +242,6 @@ TEST(SubmissionTracker, CanBeInitialized) {
 
   SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool> tracker(
       0, &dispatch_table, &timer_query_pool, &device_manager, &producer);
-}
-
-TEST_F(SubmissionTrackerTest, CannotTrackTheSameCommandBufferTwice) {
-  tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
-  EXPECT_DEATH({ tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1); }, "");
 }
 
 TEST_F(SubmissionTrackerTest, CannotUntrackAnUntrackedCommandBuffer) {
@@ -727,6 +742,74 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerEndEvenWhenNotCapturedBegin)
   EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker, kTimestamp1, expected_text_key, expected_color);
   EXPECT_FALSE(actual_debug_marker.has_begin_marker());
 }
+
+TEST_F(SubmissionTrackerTest, CanRetrieveNextedDebugMarkerTimestampsForACompleteSubmission) {
+  EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
+      .Times(4)
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
+      .WillOnce(Invoke(mock_next_ready_query_slot_function_4));
+  EXPECT_CALL(dispatch_table, GetQueryPoolResults)
+      .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
+  std::vector<uint32_t> actual_reset_slots;
+  EXPECT_CALL(timer_query_pool, ResetQuerySlots).Times(1).WillOnce(SaveArg<1>(&actual_reset_slots));
+  orbit_grpc_protos::CaptureEvent actual_capture_event;
+  auto mock_enqueue_capture_event =
+      [&actual_capture_event](orbit_grpc_protos::CaptureEvent&& capture_event) {
+        actual_capture_event = std::move(capture_event);
+      };
+
+  const std::string text_outer = "Outer";
+  const std::string text_inner = "Inner";
+  constexpr uint64_t expected_text_key_outer = 111;
+  constexpr uint64_t expected_text_key_inner = 112;
+  auto mock_intern_string_inf_necessary_and_get_key = [&text_outer, &text_inner](std::string str) {
+    if (str == text_outer) {
+      return expected_text_key_outer;
+    }
+    if (str == text_inner) {
+      return expected_text_key_inner;
+    }
+    UNREACHABLE();
+  };
+  EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey)
+      .Times(2)
+      .WillRepeatedly(Invoke(mock_intern_string_inf_necessary_and_get_key));
+  EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
+
+  Color expected_color{1.f, 0.8f, 0.6f, 0.4f};
+
+  is_capturing = true;
+  tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
+  tracker.MarkCommandBufferBegin(command_buffer);
+  tracker.MarkDebugMarkerBegin(command_buffer, text_outer.c_str(), expected_color);
+  tracker.MarkDebugMarkerBegin(command_buffer, text_inner.c_str(), expected_color);
+  tracker.MarkDebugMarkerEnd(command_buffer);
+  tracker.MarkDebugMarkerEnd(command_buffer);
+  tracker.MarkCommandBufferEnd(command_buffer);
+  pid_t tid = GetCurrentThreadId();
+  uint64_t pre_submit_time = MonotonicTimestampNs();
+  std::optional<uint64_t> pre_submit_timestamp = tracker.PreSubmission();
+  tracker.DoPostSubmitQueue(queue, 1, &submit_info, pre_submit_timestamp);
+  uint64_t post_submit_time = MonotonicTimestampNs();
+  tracker.CompleteSubmits(device);
+
+  EXPECT_THAT(actual_reset_slots,
+              UnorderedElementsAre(kSlotIndex1, kSlotIndex2, kSlotIndex3, kSlotIndex4));
+  EXPECT_TRUE(actual_capture_event.has_gpu_queue_submission());
+  const orbit_grpc_protos::GpuQueueSubmission& actual_queue_submission =
+      actual_capture_event.gpu_queue_submission();
+  EXPECT_EQ(actual_queue_submission.num_begin_markers(), 1);
+  EXPECT_EQ(actual_queue_submission.completed_markers_size(), 1);
+  const orbit_grpc_protos::GpuDebugMarker& actual_debug_marker =
+      actual_queue_submission.completed_markers(0);
+
+  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker, kTimestamp3, expected_text_key_outer,
+                             expected_color);
+  EXPECT_DEBUG_MARKER_BEGIN_EQ(actual_debug_marker, kTimestamp2, pre_submit_time, post_submit_time,
+                               tid);
+}  // namespace orbit_vulkan_layer
 
 // TODO: nested debug markers
 // TODO: debug markers across submissions

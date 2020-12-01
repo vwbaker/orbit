@@ -99,97 +99,154 @@ VKAPI_ATTR void VKAPI_CALL OrbitDestroyDevice(VkDevice device,
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitResetCommandPool(VkDevice device, VkCommandPool command_pool,
                                                      VkCommandPoolResetFlags flags) {
-  VkResult result = logic_.CallResetCommandPool(device, command_pool, flags);
-  logic_.PostCallResetCommandPool(device, command_pool, flags);
-  return result;
+  try {
+    VkResult result = logic_.CallResetCommandPool(device, command_pool, flags);
+    logic_.PostCallResetCommandPool(device, command_pool, flags);
+    return result;
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
 OrbitAllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo* allocate_info,
                             VkCommandBuffer* command_buffers) {
-  VkResult result = logic_.CallAllocateCommandBuffers(device, allocate_info, command_buffers);
-  logic_.PostCallAllocateCommandBuffers(device, allocate_info, command_buffers);
-  return result;
+  try {
+    VkResult result = logic_.CallAllocateCommandBuffers(device, allocate_info, command_buffers);
+    logic_.PostCallAllocateCommandBuffers(device, allocate_info, command_buffers);
+    return result;
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitFreeCommandBuffers(VkDevice device, VkCommandPool command_pool,
                                                    uint32_t command_buffer_count,
                                                    const VkCommandBuffer* command_buffers) {
-  logic_.CallFreeCommandBuffers(device, command_pool, command_buffer_count, command_buffers);
-  logic_.PostCallFreeCommandBuffers(device, command_pool, command_buffer_count, command_buffers);
+  try {
+    logic_.CallFreeCommandBuffers(device, command_pool, command_buffer_count, command_buffers);
+    logic_.PostCallFreeCommandBuffers(device, command_pool, command_buffer_count, command_buffers);
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitBeginCommandBuffer(VkCommandBuffer command_buffer,
                                                        const VkCommandBufferBeginInfo* begin_info) {
-  VkResult result = logic_.CallBeginCommandBuffer(command_buffer, begin_info);
-  logic_.PostCallBeginCommandBuffer(command_buffer, begin_info);
+  try {
+    VkResult result = logic_.CallBeginCommandBuffer(command_buffer, begin_info);
+    logic_.PostCallBeginCommandBuffer(command_buffer, begin_info);
 
-  return result;
+    return result;
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitEndCommandBuffer(VkCommandBuffer command_buffer) {
-  logic_.PreCallEndCommandBuffer(command_buffer);
-  VkResult result = logic_.CallEndCommandBuffer(command_buffer);
-  return result;
+  try {
+    logic_.PreCallEndCommandBuffer(command_buffer);
+    VkResult result = logic_.CallEndCommandBuffer(command_buffer);
+    return result;
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitResetCommandBuffer(VkCommandBuffer command_buffer,
                                                        VkCommandBufferResetFlags flags) {
-  logic_.PreCallResetCommandBuffer(command_buffer, flags);
-  VkResult result = logic_.CallResetCommandBuffer(command_buffer, flags);
+  try {
+    logic_.PreCallResetCommandBuffer(command_buffer, flags);
+    VkResult result = logic_.CallResetCommandBuffer(command_buffer, flags);
 
-  return result;
+    return result;
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitGetDeviceQueue(VkDevice device, uint32_t queue_family_index,
                                                uint32_t queue_index, VkQueue* pQueue) {
-  logic_.CallGetDeviceQueue(device, queue_family_index, queue_index, pQueue);
-  logic_.PostCallGetDeviceQueue(device, queue_family_index, queue_index, pQueue);
+  try {
+    logic_.CallGetDeviceQueue(device, queue_family_index, queue_index, pQueue);
+    logic_.PostCallGetDeviceQueue(device, queue_family_index, queue_index, pQueue);
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitGetDeviceQueue2(VkDevice device,
                                                 const VkDeviceQueueInfo2* queue_info,
                                                 VkQueue* queue) {
-  logic_.CallGetDeviceQueue2(device, queue_info, queue);
-  logic_.PostCallGetDeviceQueue2(device, queue_info, queue);
+  try {
+    logic_.CallGetDeviceQueue2(device, queue_info, queue);
+    logic_.PostCallGetDeviceQueue2(device, queue_info, queue);
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitQueueSubmit(VkQueue queue, uint32_t submit_count,
                                                 const VkSubmitInfo* submits, VkFence fence) {
-  std::optional<uint64_t> pre_submit_timestamp =
-      logic_.PreCallQueueSubmit(queue, submit_count, submits, fence);
-  VkResult result = logic_.CallQueueSubmit(queue, submit_count, submits, fence);
-  logic_.PostCallQueueSubmit(queue, submit_count, submits, fence, pre_submit_timestamp);
-  return result;
+  try {
+    std::optional<uint64_t> pre_submit_timestamp =
+        logic_.PreCallQueueSubmit(queue, submit_count, submits, fence);
+    VkResult result = logic_.CallQueueSubmit(queue, submit_count, submits, fence);
+    CHECK(result == VK_SUCCESS);
+    logic_.PostCallQueueSubmit(queue, submit_count, submits, fence, pre_submit_timestamp);
+    return result;
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitQueuePresentKHR(VkQueue queue,
                                                     const VkPresentInfoKHR* present_info) {
-  VkResult result = logic_.CallQueuePresentKHR(queue, present_info);
-  logic_.PostCallQueuePresentKHR(queue, present_info);
-  return result;
+  try {
+    VkResult result = logic_.CallQueuePresentKHR(queue, present_info);
+    logic_.PostCallQueuePresentKHR(queue, present_info);
+    return result;
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitCmdBeginDebugUtilsLabelEXT(VkCommandBuffer command_buffer,
                                                            const VkDebugUtilsLabelEXT* label_info) {
-  logic_.CallCmdBeginDebugUtilsLabelEXT(command_buffer, label_info);
-  logic_.PostCallCmdBeginDebugUtilsLabelEXT(command_buffer, label_info);
+  try {
+    logic_.CallCmdBeginDebugUtilsLabelEXT(command_buffer, label_info);
+    logic_.PostCallCmdBeginDebugUtilsLabelEXT(command_buffer, label_info);
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitCmdEndDebugUtilsLabelEXT(VkCommandBuffer command_buffer) {
-  logic_.PreCallCmdEndDebugUtilsLabelEXT(command_buffer);
-  logic_.CallCmdEndDebugUtilsLabelEXT(command_buffer);
+  try {
+    logic_.PreCallCmdEndDebugUtilsLabelEXT(command_buffer);
+    logic_.CallCmdEndDebugUtilsLabelEXT(command_buffer);
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitCmdDebugMarkerBeginEXT(
     VkCommandBuffer command_buffer, const VkDebugMarkerMarkerInfoEXT* marker_info) {
-  logic_.CallCmdDebugMarkerBeginEXT(command_buffer, marker_info);
-  logic_.PostCallCmdDebugMarkerBeginEXT(command_buffer, marker_info);
+  try {
+    logic_.CallCmdDebugMarkerBeginEXT(command_buffer, marker_info);
+    logic_.PostCallCmdDebugMarkerBeginEXT(command_buffer, marker_info);
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitCmdDebugMarkerEndEXT(VkCommandBuffer command_buffer) {
-  logic_.PreCallCmdDebugMarkerEndEXT(command_buffer);
-  logic_.CallCmdDebugMarkerEndEXT(command_buffer);
+  try {
+    logic_.PreCallCmdDebugMarkerEndEXT(command_buffer);
+    logic_.CallCmdDebugMarkerEndEXT(command_buffer);
+  } catch (const std::exception& e) {
+    CHECK(false);
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -248,8 +305,8 @@ VKAPI_ATTR VkResult VKAPI_CALL OrbitEnumerateDeviceExtensionProperties(
       return VK_SUCCESS;
     }
     uint32_t num_extensions_to_copy = device_extensions.size();
-    // In the case that less extensions are queried then the layer uses, we copy on this number and
-    // return VK_INCOMPLETE, according to the specification.
+    // In the case that less extensions are queried then the layer uses, we copy on this number
+    // and return VK_INCOMPLETE, according to the specification.
     if (*property_count < num_extensions_to_copy) {
       num_extensions_to_copy = *property_count;
     }
@@ -269,7 +326,8 @@ VKAPI_ATTR VkResult VKAPI_CALL OrbitEnumerateDeviceExtensionProperties(
                                                          property_count, properties);
   }
 
-  // This is a general query, so we need to append our extensions to the once down in the callchain.
+  // This is a general query, so we need to append our extensions to the once down in the
+  // callchain.
   uint32_t num_other_extensions;
   VkResult result = logic_.CallEnumerateDeviceExtensionProperties(physical_device, nullptr,
                                                                   &num_other_extensions, nullptr);
