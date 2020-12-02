@@ -131,8 +131,9 @@ void CaptureEventProducer::ConnectAndReceiveCommandsThread() {
       ERROR(
           "Calling ReceiveCommandsAndSendEvents to establish "
           "gRPC connection with ProducerSideService");
-      // This is the reason why we protect shutdown_requested_ with a Mutex instead of
-      // using an std::atomic<bool>: so that we can use (Reader)LockWhenWithTimeout.
+      // This is the reason why we protect shutdown_requested_ with an absl::Mutex instead
+      // of using an std::atomic<bool>: so that we can use (Reader)LockWhenWithTimeout
+      // to wait for reconnection_delay_ms_ or until shutdown_requested_ has become true.
       if (shutdown_requested_mutex_.ReaderLockWhenWithTimeout(
               absl::Condition(
                   +[](bool* shutdown_requested) { return *shutdown_requested; },

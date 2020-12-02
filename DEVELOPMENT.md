@@ -25,13 +25,104 @@ release from GitHub's [releases page](https://github.com/google/orbit/releases).
 
 To build Orbit you need a compiler capable of C++17. The following ones should be fine.
 
-* GCC 8 and above on Linux
-* Clang 7 and above on Linux
-* MSVC 2017, 2019 and above on Windows
+- GCC 8 and above on Linux
+- Clang 7 and above on Linux
+- MSVC 2017, 2019 and above on Windows
+
+## Dependencies
+
+All our third-party libraries and dependencies are managed by conan.
+
+### Qt on Linux
+
+There are some exceptions. On Linux, we rely by default on the distribution's Qt5
+and Mesa installation. This can be changed by modifying the conan package options
+`system_qt` and `system_mesa`, but we recommend to go with the distribution provided
+Qt package. You will need at least version 5.12.4 of Qt. The point release is important
+because it resolves a [known issue](https://bugreports.qt.io/browse/QTBUG-69683).
+
+In case you still want to have Qt provided by conan, the simplest way to do that will be
+to change the default values of these two options.
+Check out `conanfile.py`. There is a python dictionary called `default_options`
+defined in the python class `OrbitConan`.
+
+### Qt on Windows
+
+On Windows you have the choice to either let Conan compile Qt from source or use
+one of the prebuilt distributions from [The Qt Company](https://qt.io/). (Note that
+as of writing this, you need to register to download the distribution packages.)
+
+We recommend to use a prebuilt distribution since compiling from source can take
+several hours.
+
+If you decide to compile from source, you don't have to prepare anything.
+You can skip over the next paragraph and go to "Building Orbit".
+
+If you decide to use a prebuilt Qt distribution, please download and install it
+yourself. Keep in mind the prebuilt has to match your Visual Studio version and
+architecture. You also have to install the QtWebEngine component which is usually
+not selected by default in the installer.
+
+As of writing this the minimum supported Qt version is 5.12.4 but this might change.
+We recommend the version which we also compile from source. It can be found by checking
+`conanfile.py`. Search for `self.requires("qt/`. The version can be found after that string.
+
+As a next step you have to tell the Orbit build system where Qt is installed by
+setting an environment variable `Qt5_DIR`. It has to point to the directory
+containing the CMake config file `Qt5Config.cmake`. For Qt 5.15.0 installed to
+the default location the path is `C:\Qt\5.15.0\msvc2019_64\lib\cmake\Qt5`;
+
+You don't have to set that variable globally. It's fine to set it in a local
+PowerShell when starting the bootstrapping script:
+
+```powershell
+$Env:Qt5_DIR="C:\Qt\5.15.0\msvc2019_64\lib\cmake\Qt5"
+.\bootstrap-orbit.ps1
+```
+
+The value of `Qt5_DIR` is persisted in the default conan profiles. You can
+call `conan profile show default_relwithdebinfo` (after running bootstrap)
+to see the value of `Qt5_DIR`.
+
+If you have pre-existing `default_*`-profiles and want to switch to prebuilt
+Qt distributions you have to either delete these profiles - the build script
+will regenerate them - or you can manually edit them.
+
+A default profile with Qt compiled from source is pretty much empty:
+
+```
+# default_relwithdebinfo
+
+include(msvc2019_relwithdebinfo)
+
+[settings]
+[options]
+[build_requires]
+[env]
+
+```
+
+A default profile prepared for a prebuilt Qt package has two extra lines:
+
+```
+# default_relwithdebinfo
+
+include(msvc2019_relwithdebinfo)
+
+[settings]
+[options]
+OrbitProfiler:system_qt=True
+[build_requires]
+[env]
+OrbitProfiler:Qt5_DIR="C:\Qt\5.15.0\msvc2019_64\lib\cmake\Qt5"
+
+```
+
+You can find all the conan profiles in `%USERPROFILE%\.conan\profiles`.
 
 ## Building Orbit
 
-Orbit relies on `conan` as its package manager.  Conan is written in Python3,
+Orbit relies on `conan` as its package manager. Conan is written in Python3,
 so make sure you have either Conan installed or at least have Python3 installed.
 
 The `bootstrap-orbit.{sh,ps1}` will try to install `conan` via `pip3` if not
@@ -45,22 +136,6 @@ On Windows, one option to install Python is via the Visual Studio Installer.
 Alternatively you can download prebuilts from [python.org](https://www.python.org/)
 (In both cases verify that `pip3.exe` is in the path, otherwise the bootstrap
 script will not be able to install conan for you.)
-
-## Dependencies
-
-All our third-party libraries and dependencies are managed by conan.
-
-There are some exceptions. On Linux, we rely by default on the distribution's Qt5
-and Mesa installation. This can be changed by modifying the conan package options
-`system_qt` and `system_mesa`, but we recommend to go with the distribution provided
-Qt package. You will need at least version 5.12.4 of Qt. The point release is important
-because it resolves a [known issue](https://bugreports.qt.io/browse/QTBUG-69683).
-
-In case you still want to have Qt provided by conan, the simplest way to do that will be
-to change the default values of these two options.
-Check out `conanfile.py`. There is a python dictionary called `default_options`
-defined in the python class `OrbitConan`.
-
 
 ## Running Orbit
 
@@ -87,7 +162,6 @@ service at `localhost` on port `44765`.
 If you needed remote profiling support you could tunnel the mentioned TCP port through
 a SSH connection to an arbitrary Linux server. There are plans on adding generic
 SSH tunneling support but we can't promise any timeframe for that.
-
 
 ## Consistent code styling
 
@@ -120,9 +194,10 @@ style.
 
 `bootstrap-orbit.{sh,ps1}` performs all the tasks which have to be done once per developer machine.
 This includes:
-* Installing system dependencies
-* Installing the correct version of conan if necessary.
-* Installing the conan configuration (which changes rarely).
+
+- Installing system dependencies
+- Installing the correct version of conan if necessary.
+- Installing the conan configuration (which changes rarely).
 
 Afterwards `bootstrap-orbit.{sh,ps1}` calls `build.{sh,ps1}`.
 
@@ -142,6 +217,7 @@ a clean build by deleting the build directory and calling `build.{sh,ps1}`.
 
 `build.{sh,ps1}` can initialize as many build configurations as you like from the
 same invocation. Just pass conan profile names as command line arguments. Example for Linux:
+
 ```bash
 ./build.sh clang7_debug gcc9_release clang9_relwithdebinfo ggp_release
 # is equivalent to
@@ -158,6 +234,7 @@ a build directory. (Check out the previous section for more information on what 
 does.)
 
 For incremental builds, switch to the build directory and ask cmake to run the build:
+
 ```bash
 cd <build_folder>/
 cmake --build . # On Linux
@@ -177,6 +254,7 @@ So create a build directory from scratch, install the conan-managed dependencies
 and invoke `cmake` manually. Here is how it works:
 
 Let's assume you want to build Orbit in debug mode with `clang-9`:
+
 ```bash
 mkdir build_clang9_debug # Create a build directory; should not exist before.
 cd build_clang9_debug/
@@ -187,11 +265,14 @@ ninja
 ```
 
 > ### Note:
+>
 > Please be aware that it is your responsibility to ensure that the conan profile is compatible
 > with the toolchain parameters cmake uses. In this example clang9 in debug mode is used in both cases.
 
 #### Another example without toolchain files:
+
 You can also manually pass the toolchain options to cmake via the command line:
+
 ```bash
 mkdir build_clang9_debug # Create a build directory; should not exist before.
 cd build_clang9_debug/
@@ -223,7 +304,7 @@ between CLion build configurations and conan profiles. Check out
 [this blog post](https://blog.jetbrains.com/clion/2019/05/getting-started-with-the-conan-clion-plugin)
 on how to do it.
 
-Add ```-DCMAKE_CXX_FLAGS=-fsized-deallocation``` to Settings -> Build, Execution, Deployment -> CMake -> CMake options.
+Add `-DCMAKE_CXX_FLAGS=-fsized-deallocation` to Settings -> Build, Execution, Deployment -> CMake -> CMake options.
 This flag is needed because Orbit's codebase makes use of C++14's [sized-deallocation feature](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2013/n3536.html)
 which is not enabled by default on the clang compiler.
 
@@ -244,6 +325,7 @@ Visual Studio.
 ### How do I integrate with Visual Studio Code?
 
 Visual Studio Code uses configuration files to specify tasks that can be executed. These files are provided in the `contrib/.vscode` folder. To enable building from Visual Studio Code, simply copy the whole folder into the root directory with the name `.vscode`:
+
 ```bash
 cp -r contrib/vscode .vscode
 ```
@@ -271,6 +353,7 @@ There is also a `deactivate.{sh,bat,ps1}` which make your shell leave the virtua
 This message or a similar one indicates that your build profiles are
 outdated and need to be updated. You can either just call the bootstrap
 script again or you can manually update your conan config:
+
 ```bash
 conan config install third_party/conan/configs/[windows,linux]
 ```
@@ -278,8 +361,9 @@ conan config install third_party/conan/configs/[windows,linux]
 ### How can I use separate debugging symbols for Linux binaries?
 
 Orbit supports loading symbols from your workstation. Simply add directories that contain debugging symbols to the `SymbolPaths.txt` file. This file can be found at
-* Windows: `C:\Users\<user>\AppData\Roaming\OrbitProfiler\config\SymbolPaths.txt`
-* Linux: `~/orbitprofiler/config/SymbolPaths.txt`
+
+- Windows: `C:\Users\<user>\AppData\Roaming\OrbitProfiler\config\SymbolPaths.txt`
+- Linux: `~/orbitprofiler/config/SymbolPaths.txt`
 
 The symbols file must named in one of three ways. The same fname as the binary (`game.elf`), the same name plus the `.debug` extension (`game.elf.debug`) or the same name but the `.debug` extension instead of the original one (`game.debug`). To make sure the binary and symbols file have been produced in the same build, Orbit checks that they have a matching build id.
 
@@ -298,11 +382,13 @@ for deployment), and compiles Orbit against the toolchain from the GGP SDK packa
 
 Finally, `build_ggp_release/package/bin/OrbitService` can be copied over
 to the instance:
+
 ```bash
 ggp ssh put build_ggp_release/package/bin/OrbitService /mnt/developer/
 ```
 
 before the service can be started with:
+
 ```bash
 ggp ssh shell
 > sudo /mnt/developer/OrbitService

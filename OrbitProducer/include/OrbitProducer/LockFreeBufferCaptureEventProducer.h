@@ -83,8 +83,7 @@ class LockFreeBufferCaptureEventProducer : public CaptureEventProducer {
  private:
   void ForwarderThread() {
     constexpr uint64_t kMaxEventsPerRequest = 10'000;
-    std::vector<IntermediateEventT> dequeued_events;
-    dequeued_events.resize(kMaxEventsPerRequest);
+    std::vector<IntermediateEventT> dequeued_events(kMaxEventsPerRequest);
     while (!shutdown_requested_) {
       size_t dequeued_event_count;
       while ((dequeued_event_count = lock_free_queue_.try_dequeue_bulk(dequeued_events.begin(),

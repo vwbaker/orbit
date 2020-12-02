@@ -22,8 +22,8 @@ target_link_libraries(OrbitProducer PUBLIC
         OrbitBase
         OrbitProtos
         OrbitServiceLib
-        abseil::abseil
-        concurrentqueue::concurrentqueue)
+        concurrentqueue::concurrentqueue
+        CONAN_PKG::abseil)
 
 add_executable(OrbitProducerTests)
 

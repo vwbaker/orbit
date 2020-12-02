@@ -50,9 +50,7 @@ class LockFreeBufferCaptureEventProducerTest : public ::testing::Test {
 
     buffer_producer->ShutdownAndWait();
     buffer_producer.reset();
-  }
 
-  void StopService() {
     fake_service->FinishAndDisallowRpc();
     fake_server->Shutdown();
     fake_server->Wait();
