@@ -49,6 +49,7 @@ struct MarkerState {
   std::string text;
   Color color;
   size_t depth;
+  bool cut_off;
 };
 
 struct SubmitInfo {
@@ -174,12 +175,14 @@ class SubmissionTracker {
       absl::WriterMutexLock lock(&mutex_);
       CHECK(command_buffer_to_state_.contains(command_buffer));
       CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
-      Marker marker{
-          .type = MarkerType::kDebugMarkerBegin, .text = std::string(text), .color = color};
-      state.markers.emplace_back(std::move(marker));
       ++state.local_marker_stack_size;
       too_many_markers = max_local_marker_depth_per_command_buffer_ > 0 &&
                          state.local_marker_stack_size > max_local_marker_depth_per_command_buffer_;
+      Marker marker{.type = MarkerType::kDebugMarkerBegin,
+                    .text = std::string(text),
+                    .color = color,
+                    .cut_off = too_many_markers};
+      state.markers.emplace_back(std::move(marker));
     }
 
     if (!IsCapturing() || too_many_markers) {
@@ -201,10 +204,10 @@ class SubmissionTracker {
       absl::WriterMutexLock lock(&mutex_);
       CHECK(command_buffer_to_state_.contains(command_buffer));
       CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
-      Marker marker{.type = MarkerType::kDebugMarkerEnd};
-      state.markers.emplace_back(std::move(marker));
       too_many_markers = max_local_marker_depth_per_command_buffer_ > 0 &&
                          state.local_marker_stack_size > max_local_marker_depth_per_command_buffer_;
+      Marker marker{.type = MarkerType::kDebugMarkerEnd, .cut_off = too_many_markers};
+      state.markers.emplace_back(std::move(marker));
       // We might see more "ends" then "begins", as the "begins" can be on a different command
       // buffer
       if (state.local_marker_stack_size != 0) {
@@ -315,6 +318,8 @@ class SubmissionTracker {
             }
           }
 
+          // TODO: Reset cut-off marker slots
+
           switch (marker.type) {
             case MarkerType::kDebugMarkerBegin: {
               if (queue_submission_optional.has_value() && marker.slot_index.has_value()) {
@@ -325,7 +330,8 @@ class SubmissionTracker {
               internal::MarkerState marker_state{.text = marker.text.value(),
                                                  .color = marker.color.value(),
                                                  .begin_info = submitted_marker,
-                                                 .depth = markers.marker_stack.size()};
+                                                 .depth = markers.marker_stack.size(),
+                                                 .cut_off = marker.cut_off};
               markers.marker_stack.push(std::move(marker_state));
               break;
             }
@@ -333,7 +339,8 @@ class SubmissionTracker {
             case MarkerType::kDebugMarkerEnd: {
               internal::MarkerState marker_state = markers.marker_stack.top();
               markers.marker_stack.pop();
-              if (queue_submission_optional.has_value() && marker.slot_index.has_value()) {
+              if (queue_submission_optional.has_value() && marker.slot_index.has_value() &&
+                  !marker_state.cut_off) {
                 marker_state.end_info = submitted_marker;
                 queue_submission_optional->completed_markers.emplace_back(std::move(marker_state));
               }
@@ -497,6 +504,7 @@ class SubmissionTracker {
     std::optional<uint32_t> slot_index;
     std::optional<std::string> text;
     std::optional<internal::Color> color;
+    bool cut_off;
   };
 
   struct QueueMarkerState {
