@@ -191,7 +191,7 @@ void CaptureEventProcessor::ProcessGpuJob(const GpuJob& gpu_job) {
   timer_user_to_sched.set_thread_id(thread_id);
   timer_user_to_sched.set_start(amdgpu_cs_ioctl_time_ns);
   timer_user_to_sched.set_end(gpu_job.amdgpu_sched_run_job_time_ns());
-  timer_user_to_sched.set_depth(gpu_job.depth() * 2);
+  timer_user_to_sched.set_depth(gpu_job.depth());
   timer_user_to_sched.set_user_data_key(sw_queue_key);
   timer_user_to_sched.set_timeline_hash(timeline_hash);
   timer_user_to_sched.set_processor(-1);
@@ -210,7 +210,7 @@ void CaptureEventProcessor::ProcessGpuJob(const GpuJob& gpu_job) {
   timer_sched_to_start.set_thread_id(thread_id);
   timer_sched_to_start.set_start(gpu_job.amdgpu_sched_run_job_time_ns());
   timer_sched_to_start.set_end(gpu_job.gpu_hardware_start_time_ns());
-  timer_sched_to_start.set_depth(gpu_job.depth() * 2);
+  timer_sched_to_start.set_depth(gpu_job.depth());
   timer_sched_to_start.set_user_data_key(hw_queue_key);
   timer_sched_to_start.set_timeline_hash(timeline_hash);
   timer_sched_to_start.set_processor(-1);
@@ -224,7 +224,7 @@ void CaptureEventProcessor::ProcessGpuJob(const GpuJob& gpu_job) {
   timer_start_to_finish.set_thread_id(thread_id);
   timer_start_to_finish.set_start(gpu_job.gpu_hardware_start_time_ns());
   timer_start_to_finish.set_end(gpu_job.dma_fence_signaled_time_ns());
-  timer_start_to_finish.set_depth(gpu_job.depth() * 2);
+  timer_start_to_finish.set_depth(gpu_job.depth());
   timer_start_to_finish.set_user_data_key(hw_execution_key);
   timer_start_to_finish.set_timeline_hash(timeline_hash);
   timer_start_to_finish.set_processor(-1);
@@ -549,7 +549,7 @@ void CaptureEventProcessor::ProcessGpuCommandBuffers(
       command_buffer_timer.set_end(command_buffer.end_gpu_timestamp_ns() -
                                    first_command_buffer->begin_gpu_timestamp_ns() +
                                    matching_gpu_job.gpu_hardware_start_time_ns());
-      command_buffer_timer.set_depth((matching_gpu_job.depth() * 2) + 1);
+      command_buffer_timer.set_depth(matching_gpu_job.depth());
       command_buffer_timer.set_timeline_hash(timeline_hash);
       command_buffer_timer.set_processor(-1);
       command_buffer_timer.set_thread_id(thread_id);

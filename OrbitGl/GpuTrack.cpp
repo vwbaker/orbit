@@ -62,6 +62,13 @@ GpuTrack::GpuTrack(TimeGraph* time_graph, std::shared_ptr<StringManager> string_
                              TriangleToggle::InitialStateUpdate::kReplaceInitialState);
 }
 
+void GpuTrack::OnTimer(const orbit_client_protos::TimerInfo& timer_info) {
+  if (timer_info.type() == TimerInfo::kGpuCommandBuffer) {
+    has_vulkan_layer_command_buffer_timers_ = true;
+  }
+  TimerTrack::OnTimer(timer_info);
+}
+
 bool GpuTrack::IsTimerActive(const TimerInfo& timer_info) const {
   bool is_same_tid_as_selected = timer_info.thread_id() == GOrbitApp->selected_thread_id();
   // We do not properly track the PID for GPU jobs and we still want to show
@@ -123,16 +130,26 @@ Color GpuTrack::GetTimerColor(const TimerInfo& timer_info, bool is_selected) con
 }
 
 float GpuTrack::GetYFromTimer(const TimerInfo& timer_info) const {
-  if (timer_info.type() == TimerInfo::kGpuDebugMarker) {
-    return TimerTrack::GetYFromTimer(timer_info);
-  }
   const TimeGraphLayout& layout = time_graph_->GetLayout();
   auto adjusted_depth = static_cast<float>(timer_info.depth());
   if (collapse_toggle_->IsCollapsed()) {
     adjusted_depth = 0.f;
   }
-  return pos_[1] - layout.GetTextBoxHeight() * (adjusted_depth + 1.f) -
-         adjusted_depth * layout.GetSpaceBetweenGpuDepths();
+  if (timer_info.type() == TimerInfo::kGpuDebugMarker) {
+    return pos_[1] - layout.GetTextBoxHeight() * (adjusted_depth + 1.f);
+  }
+  CHECK(timer_info.type() == TimerInfo::kGpuActivity ||
+        timer_info.type() == TimerInfo::kGpuCommandBuffer);
+
+  if (has_vulkan_layer_command_buffer_timers_) {
+    adjusted_depth *= 2.f;
+  }
+
+  float gap_space = adjusted_depth * layout.GetSpaceBetweenGpuDepths();
+  if (timer_info.type() == TimerInfo::kGpuCommandBuffer) {
+    ++adjusted_depth;
+  }
+  return pos_[1] - layout.GetTextBoxHeight() * (adjusted_depth + 1.f) - gap_space;
 }
 
 // When track is collapsed, only draw "hardware execution" timers.
@@ -185,6 +202,9 @@ float GpuTrack::GetHeight() const {
   bool collapsed = collapse_toggle_->IsCollapsed();
   uint32_t depth = collapsed ? 1 : GetDepth();
   uint32_t num_gaps = depth > 0 ? depth - 1 : 0;
+  if (has_vulkan_layer_command_buffer_timers_ && !collapsed) {
+    depth *= 2;
+  }
   return layout.GetTextBoxHeight() * depth + (num_gaps * layout.GetSpaceBetweenGpuDepths()) +
          layout.GetTrackBottomMargin();
 }
