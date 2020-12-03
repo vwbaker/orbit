@@ -13,7 +13,7 @@ class FrameTrack : public TimerTrack {
   [[nodiscard]] Type GetType() const override { return kFrameTrack; }
   [[nodiscard]] bool IsCollapsable() const override { return GetMaximumScaleFactor() > 0.f; }
 
-  [[nodiscard]] virtual float GetYFromDepth(
+  [[nodiscard]] virtual float GetYFromTimer(
       const orbit_client_protos::TimerInfo& timer_info) const override;
   void OnTimer(const orbit_client_protos::TimerInfo& timer_info) override;
 

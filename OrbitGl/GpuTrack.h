@@ -35,7 +35,7 @@ class GpuTrack : public TimerTrack {
   [[nodiscard]] const TextBox* GetLeft(const TextBox* text_box) const override;
   [[nodiscard]] const TextBox* GetRight(const TextBox* text_box) const override;
 
-  [[nodiscard]] float GetYFromDepth(
+  [[nodiscard]] float GetYFromTimer(
       const orbit_client_protos::TimerInfo& timer_info) const override;
 
  protected:

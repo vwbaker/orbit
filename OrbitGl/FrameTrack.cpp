@@ -74,7 +74,7 @@ float FrameTrack::GetHeight() const {
   return GetMaximumBoxHeight() + layout.GetTrackBottomMargin();
 }
 
-float FrameTrack::GetYFromDepth(const TimerInfo& /*timer_info*/) const {
+float FrameTrack::GetYFromTimer(const TimerInfo& /*timer_info*/) const {
   return pos_[1] - GetMaximumBoxHeight();
 }
 
