@@ -20,7 +20,8 @@ class SchedulerTrack : public TimerTrack {
   [[nodiscard]] bool IsCollapsable() const override { return false; }
 
   void UpdateBoxHeight() override;
-  [[nodiscard]] float GetYFromDepth(uint32_t depth) const override;
+  [[nodiscard]] float GetYFromDepth(
+      const orbit_client_protos::TimerInfo& timer_info) const override;
 
  protected:
   [[nodiscard]] bool IsTimerActive(const orbit_client_protos::TimerInfo& timer_info) const override;

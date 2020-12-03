@@ -122,9 +122,12 @@ Color GpuTrack::GetTimerColor(const TimerInfo& timer_info, bool is_selected) con
   return color;
 }
 
-float GpuTrack::GetYFromDepth(uint32_t depth) const {
+float GpuTrack::GetYFromDepth(const TimerInfo& timer_info) const {
+  if (timer_info.type() == TimerInfo::kGpuDebugMarker) {
+    return super.GetYFromDepth(timer_info);
+  }
   const TimeGraphLayout& layout = time_graph_->GetLayout();
-  auto adjusted_depth = static_cast<float>(depth);
+  auto adjusted_depth = static_cast<float>(timer_info.depth());
   if (collapse_toggle_->IsCollapsed()) {
     adjusted_depth = 0.f;
   }
