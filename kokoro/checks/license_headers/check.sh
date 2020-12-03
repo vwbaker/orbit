@@ -5,14 +5,17 @@
 # found in the LICENSE file.
 
 # Fail on any error.
-readonly DIR="/mnt/github/orbitprofiler"
-readonly SCRIPT="${DIR}/kokoro/checks/license_headers/check.sh"
+set -euo pipefail
+
+readonly REPO_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../../../" >/dev/null 2>&1 && pwd )"
+readonly SCRIPT="/mnt/kokoro/checks/license_headers/check.sh"
 
 if [ "$0" == "$SCRIPT" ]; then
   # We are inside the docker container
 
-  cd "$DIR"
-  REFERENCE="origin/master"
+  cd /mnt
+  # Use origin/master as reference branch, if not specified by kokoro
+  REFERENCE="${KOKORO_GITHUB_PULL_REQUEST_TARGET_BRANCH:-origin/master}"
   MERGE_BASE="$(git merge-base $REFERENCE HEAD)" # Merge base is the commit on master this PR was branched from.
   LICENSE_HEADER_MISSED=""
 
@@ -30,7 +33,7 @@ if [ "$0" == "$SCRIPT" ]; then
   done <<< $(git diff -U0 --no-color --relative --name-only $MERGE_BASE \
   | grep -v third_party/ \
   | grep -v /build \
-  | egrep '\.cpp$|\.h$|CMakeLists\.txt$|\.js$')
+  | egrep '\.cpp$|\.h$|CMakeLists\.txt$|\.js$|\.proto$|\.py$')
 
   if [ -n "$LICENSE_HEADER_MISSED" ]; then
     exit 1
@@ -38,5 +41,6 @@ if [ "$0" == "$SCRIPT" ]; then
 
 else
   gcloud auth configure-docker --quiet
-  docker run --rm --network host -v ${KOKORO_ARTIFACTS_DIR}:/mnt gcr.io/orbitprofiler/license_headers:latest $SCRIPT
+  docker run --rm --network host -v ${REPO_ROOT}:/mnt -e KOKORO_GITHUB_PULL_REQUEST_TARGET_BRANCH \
+    gcr.io/orbitprofiler/license_headers:latest $SCRIPT
 fi

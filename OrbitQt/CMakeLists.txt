@@ -55,14 +55,20 @@ target_sources(
           orbitaboutdialog.ui
           orbitcodeeditor.cpp
           orbitdataviewpanel.cpp
+          orbitdataviewpanel.ui
           orbitdisassemblydialog.cpp
+          orbitdisassemblydialog.ui
           orbiteventiterator.cpp
           orbiteventiterator.ui
           orbitglwidget.cpp
           orbitglwidgetwithheader.cpp
+          orbitglwidgetwithheader.ui
           orbitlivefunctions.cpp
+          orbitlivefunctions.ui
           orbitmainwindow.cpp
+          orbitmainwindow.ui
           orbitsamplingreport.cpp
+          orbitsamplingreport.ui
           OrbitStartupWindow.cpp
           orbittablemodel.cpp
           orbittreeview.cpp
@@ -71,6 +77,7 @@ target_sources(
           OverlayWidget.cpp
           OverlayWidget.ui
           processlauncherwidget.cpp
+          processlauncherwidget.ui
           servicedeploymanager.cpp
           TutorialContent.cpp
           TutorialOverlay.cpp
@@ -128,6 +135,7 @@ set_target_properties(OrbitQt PROPERTIES OUTPUT_NAME "Orbit")
 set_target_properties(OrbitQt PROPERTIES AUTOMOC ON)
 set_target_properties(OrbitQt PROPERTIES AUTOUIC ON)
 set_target_properties(OrbitQt PROPERTIES AUTORCC ON)
+iwyu_add_dependency(OrbitQt)
 strip_symbols(OrbitQt)
 
 add_executable(OrbitQtTests)
@@ -164,6 +172,7 @@ target_link_libraries(
 set_target_properties(OrbitQtTests PROPERTIES AUTOMOC ON)
 set_target_properties(OrbitQtTests PROPERTIES AUTOUIC ON)
 set_target_properties(OrbitQtTests PROPERTIES AUTORCC ON)
+iwyu_add_dependency(OrbitQtTests)
 
 if(WIN32)
   get_target_property(_qmake_executable Qt5::qmake IMPORTED_LOCATION)
