@@ -330,6 +330,7 @@ void OrbitMainWindow::SaveCurrentTabLayoutAsDefaultInMemory() {
 void OrbitMainWindow::CreateTabBarContextMenu(QTabWidget* tab_widget, int tab_index,
                                               const QPoint pos) {
   QMenu context_menu(this);
+  context_menu.setAccessibleName("TabBarContextMenu");
   QAction move_action;
   QTabWidget* other_widget;
 
@@ -758,6 +759,11 @@ void OrbitMainWindow::RestoreDefaultTabLayout() {
 
 void OrbitMainWindow::on_actionSave_Capture_triggered() {
   ShowCaptureOnSaveWarningIfNeeded();
+
+  if (!GOrbitApp->HasCaptureData()) {
+    QMessageBox::information(this, "Save capture", "Looks like there is no capture to save.");
+    return;
+  }
 
   const CaptureData& capture_data = GOrbitApp->GetCaptureData();
   QString file = QFileDialog::getSaveFileName(

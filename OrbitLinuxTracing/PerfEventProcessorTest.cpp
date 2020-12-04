@@ -2,112 +2,124 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <thread>
+
+#include "LinuxTracingUtils.h"
 #include "PerfEventProcessor.h"
+#include "PerfEventVisitor.h"
 
 namespace LinuxTracing {
 
 namespace {
-class TestEvent : public PerfEvent {
+
+class MockVisitor : public PerfEventVisitor {
  public:
-  explicit TestEvent(uint64_t timestamp) : timestamp_(timestamp) {}
-
-  uint64_t GetTimestamp() const override { return timestamp_; }
-
-  void Accept(PerfEventVisitor*) override {}
-
- private:
-  uint64_t timestamp_;
+  MOCK_METHOD(void, visit, (LostPerfEvent * event), (override));
 };
 
-std::unique_ptr<PerfEvent> MakeTestEvent(uint64_t timestamp) {
-  return std::make_unique<TestEvent>(timestamp);
+class PerfEventProcessorTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    processor_.AddVisitor(&mock_visitor_);
+    processor_.SetDiscardedOutOfOrderCounter(&discarded_out_of_order_counter_);
+  }
+
+  void TearDown() override {}
+
+  PerfEventProcessor processor_;
+  MockVisitor mock_visitor_;
+  std::atomic<uint64_t> discarded_out_of_order_counter_ = 0;
+
+  static constexpr uint64_t kDelayBeforeProcessOldEventsMs = 100;
+};
+
+std::unique_ptr<PerfEvent> MakeFakePerfEvent(int origin_fd, uint64_t timestamp_ns) {
+  // We use LostPerfEvent just because it's a simple one, but we could use any
+  // as we only need to set the file descriptor and the timestamp.
+  auto event = std::make_unique<LostPerfEvent>();
+  event->SetOriginFileDescriptor(origin_fd);
+  event->ring_buffer_record.sample_id.time = timestamp_ns;
+  return event;
 }
+
 }  // namespace
 
-TEST(PerfEventQueue, SingleFd) {
-  constexpr int origin_fd = 11;
-  PerfEventQueue event_queue;
-  uint64_t expected_timestamp;
+TEST_F(PerfEventProcessorTest, ProcessOldEvents) {
+  EXPECT_CALL(mock_visitor_, visit).Times(0);
+  processor_.AddEvent(MakeFakePerfEvent(11, MonotonicTimestampNs()));
+  processor_.AddEvent(MakeFakePerfEvent(11, MonotonicTimestampNs()));
+  processor_.AddEvent(MakeFakePerfEvent(22, MonotonicTimestampNs()));
+  processor_.ProcessOldEvents();
 
-  EXPECT_FALSE(event_queue.HasEvent());
+  ::testing::Mock::VerifyAndClearExpectations(&mock_visitor_);
 
-  event_queue.PushEvent(origin_fd, MakeTestEvent(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(kDelayBeforeProcessOldEventsMs));
 
-  event_queue.PushEvent(origin_fd, MakeTestEvent(101));
+  EXPECT_CALL(mock_visitor_, visit).Times(3);
+  processor_.AddEvent(MakeFakePerfEvent(11, MonotonicTimestampNs()));
+  processor_.ProcessOldEvents();
+  EXPECT_EQ(discarded_out_of_order_counter_, 0);
 
-  ASSERT_TRUE(event_queue.HasEvent());
-  expected_timestamp = 100;
-  EXPECT_EQ(event_queue.TopEvent()->GetTimestamp(), expected_timestamp);
-  EXPECT_EQ(event_queue.PopEvent()->GetTimestamp(), expected_timestamp);
+  ::testing::Mock::VerifyAndClearExpectations(&mock_visitor_);
 
-  event_queue.PushEvent(origin_fd, MakeTestEvent(102));
+  std::this_thread::sleep_for(std::chrono::milliseconds(kDelayBeforeProcessOldEventsMs));
 
-  ASSERT_TRUE(event_queue.HasEvent());
-  expected_timestamp = 101;
-  EXPECT_EQ(event_queue.TopEvent()->GetTimestamp(), expected_timestamp);
-  EXPECT_EQ(event_queue.PopEvent()->GetTimestamp(), expected_timestamp);
-
-  ASSERT_TRUE(event_queue.HasEvent());
-  expected_timestamp = 102;
-  EXPECT_EQ(event_queue.TopEvent()->GetTimestamp(), expected_timestamp);
-  EXPECT_EQ(event_queue.PopEvent()->GetTimestamp(), expected_timestamp);
-
-  EXPECT_FALSE(event_queue.HasEvent());
-
-  event_queue.PushEvent(origin_fd, MakeTestEvent(103));
-
-  ASSERT_TRUE(event_queue.HasEvent());
-  expected_timestamp = 103;
-  EXPECT_EQ(event_queue.TopEvent()->GetTimestamp(), expected_timestamp);
-  EXPECT_EQ(event_queue.PopEvent()->GetTimestamp(), expected_timestamp);
-
-  EXPECT_FALSE(event_queue.HasEvent());
+  EXPECT_CALL(mock_visitor_, visit).Times(1);
+  processor_.ProcessOldEvents();
+  EXPECT_EQ(discarded_out_of_order_counter_, 0);
 }
 
-TEST(PerfEventQueue, MultipleFd) {
-  PerfEventQueue event_queue;
-  uint64_t expected_timestamp;
+TEST_F(PerfEventProcessorTest, ProcessAllEvents) {
+  EXPECT_CALL(mock_visitor_, visit).Times(4);
+  processor_.AddEvent(MakeFakePerfEvent(11, MonotonicTimestampNs()));
+  processor_.AddEvent(MakeFakePerfEvent(22, MonotonicTimestampNs()));
+  processor_.AddEvent(MakeFakePerfEvent(11, MonotonicTimestampNs()));
+  processor_.AddEvent(MakeFakePerfEvent(33, MonotonicTimestampNs()));
+  processor_.ProcessAllEvents();
 
-  EXPECT_FALSE(event_queue.HasEvent());
+  ::testing::Mock::VerifyAndClearExpectations(&mock_visitor_);
 
-  event_queue.PushEvent(11, MakeTestEvent(103));
+  std::this_thread::sleep_for(std::chrono::milliseconds(kDelayBeforeProcessOldEventsMs));
 
-  event_queue.PushEvent(22, MakeTestEvent(101));
+  EXPECT_CALL(mock_visitor_, visit).Times(0);
+  processor_.ProcessAllEvents();
+  EXPECT_EQ(discarded_out_of_order_counter_, 0);
+}
 
-  event_queue.PushEvent(22, MakeTestEvent(102));
+TEST_F(PerfEventProcessorTest, DiscardedOutOfOrderCounter) {
+  EXPECT_CALL(mock_visitor_, visit).Times(4);
+  processor_.AddEvent(MakeFakePerfEvent(11, MonotonicTimestampNs()));
+  processor_.AddEvent(MakeFakePerfEvent(11, MonotonicTimestampNs()));
+  uint64_t last_processed_timestamp_ns = MonotonicTimestampNs();
+  processor_.AddEvent(MakeFakePerfEvent(22, last_processed_timestamp_ns));
 
-  ASSERT_TRUE(event_queue.HasEvent());
-  expected_timestamp = 101;
-  EXPECT_EQ(event_queue.TopEvent()->GetTimestamp(), expected_timestamp);
-  EXPECT_EQ(event_queue.PopEvent()->GetTimestamp(), expected_timestamp);
+  std::this_thread::sleep_for(std::chrono::milliseconds(kDelayBeforeProcessOldEventsMs));
+  processor_.ProcessOldEvents();
 
-  ASSERT_TRUE(event_queue.HasEvent());
-  expected_timestamp = 102;
-  EXPECT_EQ(event_queue.TopEvent()->GetTimestamp(), expected_timestamp);
-  EXPECT_EQ(event_queue.PopEvent()->GetTimestamp(), expected_timestamp);
+  processor_.AddEvent(MakeFakePerfEvent(11, last_processed_timestamp_ns));
+  EXPECT_EQ(discarded_out_of_order_counter_, 0);
+  processor_.AddEvent(MakeFakePerfEvent(11, last_processed_timestamp_ns - 1));
+  EXPECT_EQ(discarded_out_of_order_counter_, 1);
 
-  event_queue.PushEvent(33, MakeTestEvent(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(kDelayBeforeProcessOldEventsMs));
+  processor_.ProcessOldEvents();
+}
 
-  event_queue.PushEvent(11, MakeTestEvent(104));
+TEST_F(PerfEventProcessorTest, ProcessOldEventsNeedsVisitor) {
+  processor_.ClearVisitors();
+  processor_.AddEvent(MakeFakePerfEvent(11, MonotonicTimestampNs()));
+  std::this_thread::sleep_for(std::chrono::milliseconds(kDelayBeforeProcessOldEventsMs));
+  EXPECT_DEATH(processor_.ProcessOldEvents(), "!visitors_.empty()");
+}
 
-  ASSERT_TRUE(event_queue.HasEvent());
-  expected_timestamp = 100;
-  EXPECT_EQ(event_queue.TopEvent()->GetTimestamp(), expected_timestamp);
-  EXPECT_EQ(event_queue.PopEvent()->GetTimestamp(), expected_timestamp);
-
-  ASSERT_TRUE(event_queue.HasEvent());
-  expected_timestamp = 103;
-  EXPECT_EQ(event_queue.TopEvent()->GetTimestamp(), expected_timestamp);
-  EXPECT_EQ(event_queue.PopEvent()->GetTimestamp(), expected_timestamp);
-
-  ASSERT_TRUE(event_queue.HasEvent());
-  expected_timestamp = 104;
-  EXPECT_EQ(event_queue.TopEvent()->GetTimestamp(), expected_timestamp);
-  EXPECT_EQ(event_queue.PopEvent()->GetTimestamp(), expected_timestamp);
-
-  EXPECT_FALSE(event_queue.HasEvent());
+TEST_F(PerfEventProcessorTest, ProcessAllEventsNeedsVisitor) {
+  processor_.ClearVisitors();
+  processor_.AddEvent(MakeFakePerfEvent(11, MonotonicTimestampNs()));
+  std::this_thread::sleep_for(std::chrono::milliseconds(kDelayBeforeProcessOldEventsMs));
+  EXPECT_DEATH(processor_.ProcessAllEvents(), "!visitors_.empty()");
 }
 
 }  // namespace LinuxTracing
