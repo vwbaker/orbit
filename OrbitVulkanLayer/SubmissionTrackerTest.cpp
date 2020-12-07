@@ -710,13 +710,13 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerTimestampsForACompleteSubmis
 
   const char* text = "Text";
   constexpr uint64_t expected_text_key = 111;
-  auto mock_intern_string_inf_necessary_and_get_key = [&text](std::string str) {
+  auto mock_intern_string_if_necessary_and_get_key = [&text](std::string str) {
     EXPECT_STREQ(text, str.c_str());
     return expected_text_key;
   };
   EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey)
       .Times(1)
-      .WillOnce(Invoke(mock_intern_string_inf_necessary_and_get_key));
+      .WillOnce(Invoke(mock_intern_string_if_necessary_and_get_key));
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
 
   internal::Color expected_color{1.f, 0.8f, 0.6f, 0.4f};
@@ -765,13 +765,13 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerEndEvenWhenNotCapturedBegin)
 
   const char* text = "Text";
   constexpr uint64_t expected_text_key = 111;
-  auto mock_intern_string_inf_necessary_and_get_key = [&text](std::string str) {
+  auto mock_intern_string_if_necessary_and_get_key = [&text](std::string str) {
     EXPECT_STREQ(text, str.c_str());
     return expected_text_key;
   };
   EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey)
       .Times(1)
-      .WillOnce(Invoke(mock_intern_string_inf_necessary_and_get_key));
+      .WillOnce(Invoke(mock_intern_string_if_necessary_and_get_key));
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
 
   internal::Color expected_color{1.f, 0.8f, 0.6f, 0.4f};
@@ -818,7 +818,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveNextedDebugMarkerTimestampsForAComplete
   const std::string text_inner = "Inner";
   constexpr uint64_t expected_text_key_outer = 111;
   constexpr uint64_t expected_text_key_inner = 112;
-  auto mock_intern_string_inf_necessary_and_get_key = [&text_outer, &text_inner](std::string str) {
+  auto mock_intern_string_if_necessary_and_get_key = [&text_outer, &text_inner](std::string str) {
     if (str == text_outer) {
       return expected_text_key_outer;
     }
@@ -829,7 +829,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveNextedDebugMarkerTimestampsForAComplete
   };
   EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey)
       .Times(2)
-      .WillRepeatedly(Invoke(mock_intern_string_inf_necessary_and_get_key));
+      .WillRepeatedly(Invoke(mock_intern_string_if_necessary_and_get_key));
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
 
   internal::Color expected_color{1.f, 0.8f, 0.6f, 0.4f};
@@ -890,7 +890,7 @@ TEST_F(SubmissionTrackerTest,
   const std::string text_inner = "Inner";
   constexpr uint64_t expected_text_key_outer = 111;
   constexpr uint64_t expected_text_key_inner = 112;
-  auto mock_intern_string_inf_necessary_and_get_key = [&text_outer, &text_inner](std::string str) {
+  auto mock_intern_string_if_necessary_and_get_key = [&text_outer, &text_inner](std::string str) {
     if (str == text_outer) {
       return expected_text_key_outer;
     }
@@ -901,7 +901,7 @@ TEST_F(SubmissionTrackerTest,
   };
   EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey)
       .Times(2)
-      .WillRepeatedly(Invoke(mock_intern_string_inf_necessary_and_get_key));
+      .WillRepeatedly(Invoke(mock_intern_string_if_necessary_and_get_key));
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
 
   internal::Color expected_color{1.f, 0.8f, 0.6f, 0.4f};
@@ -963,13 +963,13 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissions) {
 
   const char* text = "Text";
   constexpr uint64_t expected_text_key = 111;
-  auto mock_intern_string_inf_necessary_and_get_key = [&text](std::string str) {
+  auto mock_intern_string_if_necessary_and_get_key = [&text](std::string str) {
     EXPECT_STREQ(text, str.c_str());
     return expected_text_key;
   };
   EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey)
       .Times(1)
-      .WillOnce(Invoke(mock_intern_string_inf_necessary_and_get_key));
+      .WillOnce(Invoke(mock_intern_string_if_necessary_and_get_key));
   EXPECT_CALL(*producer, EnqueueCaptureEvent)
       .Times(2)
       .WillRepeatedly(Invoke(mock_enqueue_capture_event));
@@ -1043,13 +1043,13 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissionsEvenWhen
 
   const char* text = "Text";
   constexpr uint64_t expected_text_key = 111;
-  auto mock_intern_string_inf_necessary_and_get_key = [&text](std::string str) {
+  auto mock_intern_string_if_necessary_and_get_key = [&text](std::string str) {
     EXPECT_STREQ(text, str.c_str());
     return expected_text_key;
   };
   EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey)
       .Times(1)
-      .WillOnce(Invoke(mock_intern_string_inf_necessary_and_get_key));
+      .WillOnce(Invoke(mock_intern_string_if_necessary_and_get_key));
   EXPECT_CALL(*producer, EnqueueCaptureEvent)
       .Times(2)
       .WillRepeatedly(Invoke(mock_enqueue_capture_event));
@@ -1118,13 +1118,13 @@ TEST_F(SubmissionTrackerTest, ResetSlotsOnDebugMarkerAcrossTwoSubmissionsWhenNot
 
   const char* text = "Text";
   constexpr uint64_t expected_text_key = 111;
-  auto mock_intern_string_inf_necessary_and_get_key = [&text](std::string str) {
+  auto mock_intern_string_if_necessary_and_get_key = [&text](std::string str) {
     EXPECT_STREQ(text, str.c_str());
     return expected_text_key;
   };
   EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey)
       .Times(1)
-      .WillOnce(Invoke(mock_intern_string_inf_necessary_and_get_key));
+      .WillOnce(Invoke(mock_intern_string_if_necessary_and_get_key));
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
 
   internal::Color expected_color{1.f, 0.8f, 0.6f, 0.4f};
@@ -1206,7 +1206,7 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBuffer) {
   const std::string text_outer = "Outer";
   const std::string text_inner = "Inner";
   constexpr uint64_t expected_text_key_outer = 111;
-  auto mock_intern_string_inf_necessary_and_get_key = [&text_outer](std::string str) {
+  auto mock_intern_string_if_necessary_and_get_key = [&text_outer](std::string str) {
     if (str == text_outer) {
       return expected_text_key_outer;
     }
@@ -1214,7 +1214,7 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBuffer) {
   };
   EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey)
       .Times(1)
-      .WillOnce(Invoke(mock_intern_string_inf_necessary_and_get_key));
+      .WillOnce(Invoke(mock_intern_string_if_necessary_and_get_key));
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
 
   internal::Color expected_color{1.f, 0.8f, 0.6f, 0.4f};
@@ -1275,13 +1275,13 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBufferAcro
   const std::string text_outer = "Outer";
   const std::string text_inner = "Inner";
   constexpr uint64_t expected_outer_text_key = 111;
-  auto mock_intern_string_inf_necessary_and_get_key = [&text_outer](std::string str) {
+  auto mock_intern_string_if_necessary_and_get_key = [&text_outer](std::string str) {
     EXPECT_EQ(text_outer, str);
     return expected_outer_text_key;
   };
   EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey)
       .Times(1)
-      .WillOnce(Invoke(mock_intern_string_inf_necessary_and_get_key));
+      .WillOnce(Invoke(mock_intern_string_if_necessary_and_get_key));
   EXPECT_CALL(*producer, EnqueueCaptureEvent)
       .Times(2)
       .WillRepeatedly(Invoke(mock_enqueue_capture_event));
