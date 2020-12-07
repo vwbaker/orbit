@@ -39,7 +39,19 @@ class VulkanLayerProducerImpl : public VulkanLayerProducer {
    protected:
     void OnCaptureStart() override {
       LockFreeBufferCaptureEventProducer::OnCaptureStart();
+      // Call ClearStringInternPool also in OnCaptureStart in case
+      // some strings have been interned after OnCaptureFinished.
       outer_->ClearStringInternPool();
+    }
+
+    void OnCaptureFinished() override {
+      LockFreeBufferCaptureEventProducer::OnCaptureFinished();
+      outer_->ClearStringInternPool();
+      // Note that, currently, EnqueueCaptureEvent and InternStringIfNecessaryAndGetKey
+      // (which also calls EnqueueCaptureEvent) can still be called after OnCaptureFinished,
+      // because SubmissionTracker::CompleteSubmits (which is called on vkQueuePresentKHR)
+      // tries to send all submissions and debug markers of a frame that started while capturing,
+      // even if the capture was stopped in the middle of that frame.
     }
 
     orbit_grpc_protos::CaptureEvent TranslateIntermediateEvent(
