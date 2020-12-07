@@ -43,6 +43,7 @@ class VulkanLayerProducer {
     virtual void OnCaptureFinished() = 0;
   };
 
+  // Use this method to set a listener and be notified on capture start, stopped, completed.
   virtual void SetCaptureStatusListener(CaptureStatusListener* listener) = 0;
 };
 
