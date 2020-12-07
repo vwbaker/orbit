@@ -49,6 +49,8 @@ class MockVulkanLayerProducer : public VulkanLayerProducer {
 
   MOCK_METHOD(void, BringUp, (const std::shared_ptr<grpc::Channel>& channel), (override));
   MOCK_METHOD(void, TakeDown, (), (override));
+
+  MOCK_METHOD(void, SetCaptureStatusListener, (CaptureStatusListener*), (override));
 };
 
 }  // namespace

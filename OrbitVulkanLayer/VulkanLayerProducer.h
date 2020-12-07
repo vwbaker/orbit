@@ -34,6 +34,16 @@ class VulkanLayerProducer {
   // This method enqueues an InternedString to be sent to OrbitService the first time the string
   // passed as argument is seen. In all cases, it returns the key corresponding to the string.
   [[nodiscard]] virtual uint64_t InternStringIfNecessaryAndGetKey(std::string str) = 0;
+
+  class CaptureStatusListener {
+   public:
+    virtual ~CaptureStatusListener() = default;
+    virtual void OnCaptureStart() = 0;
+    virtual void OnCaptureStop() = 0;
+    virtual void OnCaptureFinished() = 0;
+  };
+
+  virtual void SetCaptureStatusListener(CaptureStatusListener* listener) = 0;
 };
 
 }  // namespace orbit_vulkan_layer

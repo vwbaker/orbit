@@ -30,6 +30,8 @@ class VulkanLayerProducerImpl : public VulkanLayerProducer {
 
   [[nodiscard]] uint64_t InternStringIfNecessaryAndGetKey(std::string str) override;
 
+  void SetCaptureStatusListener(CaptureStatusListener* listener) override { listener_ = listener; }
+
  private:
   class LockFreeBufferVulkanLayerProducer
       : public orbit_producer::LockFreeBufferCaptureEventProducer<orbit_grpc_protos::CaptureEvent> {
@@ -39,13 +41,28 @@ class VulkanLayerProducerImpl : public VulkanLayerProducer {
    protected:
     void OnCaptureStart() override {
       LockFreeBufferCaptureEventProducer::OnCaptureStart();
+      if (outer_->listener_ != nullptr) {
+        outer_->listener_->OnCaptureStart();
+      }
+
       // Call ClearStringInternPool also in OnCaptureStart in case
       // some strings have been interned after OnCaptureFinished.
       outer_->ClearStringInternPool();
     }
 
+    void OnCaptureStop() override {
+      LockFreeBufferCaptureEventProducer::OnCaptureStop();
+      if (outer_->listener_ != nullptr) {
+        outer_->listener_->OnCaptureStop();
+      }
+    }
+
     void OnCaptureFinished() override {
       LockFreeBufferCaptureEventProducer::OnCaptureFinished();
+      if (outer_->listener_ != nullptr) {
+        outer_->listener_->OnCaptureFinished();
+      }
+
       outer_->ClearStringInternPool();
       // Note that, currently, EnqueueCaptureEvent and InternStringIfNecessaryAndGetKey
       // (which also calls EnqueueCaptureEvent) can still be called after OnCaptureFinished,
@@ -76,6 +93,8 @@ class VulkanLayerProducerImpl : public VulkanLayerProducer {
 
   absl::flat_hash_set<uint64_t> string_keys_sent_;
   absl::Mutex string_keys_sent_mutex_;
+
+  CaptureStatusListener* listener_ = nullptr;
 };
 
 }  // namespace orbit_vulkan_layer
