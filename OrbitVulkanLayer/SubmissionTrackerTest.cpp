@@ -242,6 +242,13 @@ class SubmissionTrackerTest : public ::testing::Test {
         .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
         .WillOnce(Invoke(mock_next_ready_query_slot_function_2));
   }
+  void EXPECT_THREE_NEXT_READY_QUERY_SLOT_CALLS() {
+    EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
+        .Times(3)
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_3));
+  }
   void EXPECT_FOUR_NEXT_READY_QUERY_SLOT_CALLS() {
     EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
         .Times(4)
@@ -407,8 +414,8 @@ TEST_F(SubmissionTrackerTest, CanRetrieveCommandBufferTimestampsForACompleteSubm
   pid_t pid = GetCurrentThreadId();
   uint64_t pre_submit_time = MonotonicTimestampNs();
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   uint64_t post_submit_time = MonotonicTimestampNs();
   tracker.CompleteSubmits(device);
 
@@ -439,8 +446,8 @@ TEST_F(SubmissionTrackerTest,
   pid_t pid = GetCurrentThreadId();
   uint64_t pre_submit_time = MonotonicTimestampNs();
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   uint64_t post_submit_time = MonotonicTimestampNs();
   tracker.CompleteSubmits(device);
   tracker.CompleteSubmits(device);
@@ -464,8 +471,8 @@ TEST_F(SubmissionTrackerTest, StopCaptureBeforeSubmissionWillResetTheSlots) {
   tracker.MarkCommandBufferEnd(command_buffer);
   is_capturing = false;
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   tracker.CompleteSubmits(device);
 
   EXPECT_THAT(actual_reset_slots, UnorderedElementsAre(kSlotIndex1, kSlotIndex2));
@@ -491,8 +498,8 @@ TEST_F(SubmissionTrackerTest, CanRetrieveCommandBufferTimestampsWhenNotCapturing
   pid_t pid = GetCurrentThreadId();
   uint64_t pre_submit_time = MonotonicTimestampNs();
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   uint64_t post_submit_time = MonotonicTimestampNs();
   is_capturing = false;
   tracker.CompleteSubmits(device);
@@ -522,9 +529,9 @@ TEST_F(SubmissionTrackerTest, StopCaptureWhileSubmissionWillStillYieldResults) {
   pid_t pid = GetCurrentThreadId();
   uint64_t pre_submit_time = MonotonicTimestampNs();
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
   is_capturing = false;
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   uint64_t post_submit_time = MonotonicTimestampNs();
   tracker.CompleteSubmits(device);
 
@@ -545,8 +552,8 @@ TEST_F(SubmissionTrackerTest, StartCaptureJustBeforeSubmissionWontWriteData) {
   tracker.MarkCommandBufferEnd(command_buffer);
   is_capturing = true;
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   tracker.CompleteSubmits(device);
 }
 
@@ -561,9 +568,9 @@ TEST_F(SubmissionTrackerTest, StartCaptureWhileSubmissionWontWriteData) {
   tracker.MarkCommandBufferBegin(command_buffer);
   tracker.MarkCommandBufferEnd(command_buffer);
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
   is_capturing = true;
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   tracker.CompleteSubmits(device);
 }
 
@@ -584,8 +591,8 @@ TEST_F(SubmissionTrackerTest, WillResetProperlyWhenStartStopAndStartACaptureWith
   tracker.MarkCommandBufferEnd(command_buffer);
   is_capturing = true;
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   tracker.CompleteSubmits(device);
 
   EXPECT_THAT(actual_reset_slots, UnorderedElementsAre(kSlotIndex1));
@@ -603,8 +610,8 @@ TEST_F(SubmissionTrackerTest, CannotReuseCommandBufferWithoutReset) {
   tracker.MarkCommandBufferBegin(command_buffer);
   tracker.MarkCommandBufferEnd(command_buffer);
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   tracker.CompleteSubmits(device);
 
   EXPECT_DEATH({ tracker.MarkCommandBufferBegin(command_buffer); }, "");
@@ -626,8 +633,8 @@ TEST_F(SubmissionTrackerTest, CanReuseCommandBufferAfterReset) {
   tracker.MarkCommandBufferBegin(command_buffer);
   tracker.MarkCommandBufferEnd(command_buffer);
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   tracker.CompleteSubmits(device);
   tracker.ResetCommandBuffer(command_buffer);
   tracker.MarkCommandBufferBegin(command_buffer);
@@ -730,8 +737,8 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerTimestampsForACompleteSubmis
   pid_t tid = GetCurrentThreadId();
   uint64_t pre_submit_time = MonotonicTimestampNs();
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   uint64_t post_submit_time = MonotonicTimestampNs();
   tracker.CompleteSubmits(device);
 
@@ -784,8 +791,8 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerEndEvenWhenNotCapturedBegin)
   tracker.MarkDebugMarkerEnd(command_buffer);
   tracker.MarkCommandBufferEnd(command_buffer);
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   tracker.CompleteSubmits(device);
 
   EXPECT_THAT(actual_reset_slots, UnorderedElementsAre(kSlotIndex1, kSlotIndex2));
@@ -845,8 +852,8 @@ TEST_F(SubmissionTrackerTest, CanRetrieveNextedDebugMarkerTimestampsForAComplete
   pid_t tid = GetCurrentThreadId();
   uint64_t pre_submit_time = MonotonicTimestampNs();
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   uint64_t post_submit_time = MonotonicTimestampNs();
   tracker.CompleteSubmits(device);
 
@@ -918,8 +925,8 @@ TEST_F(SubmissionTrackerTest,
   pid_t tid = GetCurrentThreadId();
   uint64_t pre_submit_time = MonotonicTimestampNs();
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   uint64_t post_submit_time = MonotonicTimestampNs();
   tracker.CompleteSubmits(device);
 
@@ -985,8 +992,8 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissions) {
   tracker.MarkCommandBufferEnd(command_buffer);
   uint64_t pre_submit_time_1 = MonotonicTimestampNs();
   std::optional<internal::QueueSubmission> queue_submission_optional_1 =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional_1);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional_1);
   uint64_t post_submit_time_1 = MonotonicTimestampNs();
   tracker.CompleteSubmits(device);
   tracker.ResetCommandBuffer(command_buffer);
@@ -994,8 +1001,8 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissions) {
   tracker.MarkDebugMarkerEnd(command_buffer);
   tracker.MarkCommandBufferEnd(command_buffer);
   std::optional<internal::QueueSubmission> queue_submission_optional_2 =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional_2);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional_2);
   tracker.CompleteSubmits(device);
 
   EXPECT_THAT(actual_reset_slots_1, UnorderedElementsAre(kSlotIndex1, kSlotIndex3));
@@ -1063,16 +1070,16 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissionsEvenWhen
   is_capturing = true;
   tracker.MarkCommandBufferEnd(command_buffer);
   std::optional<internal::QueueSubmission> queue_submission_optional_1 =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional_1);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional_1);
   tracker.CompleteSubmits(device);
   tracker.ResetCommandBuffer(command_buffer);
   tracker.MarkCommandBufferBegin(command_buffer);
   tracker.MarkDebugMarkerEnd(command_buffer);
   tracker.MarkCommandBufferEnd(command_buffer);
   std::optional<internal::QueueSubmission> queue_submission_optional_2 =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional_2);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional_2);
   tracker.CompleteSubmits(device);
 
   EXPECT_THAT(actual_reset_slots_1, UnorderedElementsAre(kSlotIndex1));
@@ -1101,7 +1108,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissionsEvenWhen
 }
 
 TEST_F(SubmissionTrackerTest, ResetSlotsOnDebugMarkerAcrossTwoSubmissionsWhenNotCapturingEnd) {
-  EXPECT_SIX_NEXT_READY_QUERY_SLOT_CALLS();
+  EXPECT_THREE_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
   std::vector<uint32_t> actual_reset_slots_1;
@@ -1117,14 +1124,7 @@ TEST_F(SubmissionTrackerTest, ResetSlotsOnDebugMarkerAcrossTwoSubmissionsWhenNot
       };
 
   const char* text = "Text";
-  constexpr uint64_t expected_text_key = 111;
-  auto mock_intern_string_if_necessary_and_get_key = [&text](std::string str) {
-    EXPECT_STREQ(text, str.c_str());
-    return expected_text_key;
-  };
-  EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey)
-      .Times(1)
-      .WillOnce(Invoke(mock_intern_string_if_necessary_and_get_key));
+  EXPECT_CALL(*producer, InternStringIfNecessaryAndGetKey).Times(0);
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
 
   internal::Color expected_color{1.f, 0.8f, 0.6f, 0.4f};
@@ -1135,8 +1135,8 @@ TEST_F(SubmissionTrackerTest, ResetSlotsOnDebugMarkerAcrossTwoSubmissionsWhenNot
   tracker.MarkDebugMarkerBegin(command_buffer, text, expected_color);
   tracker.MarkCommandBufferEnd(command_buffer);
   std::optional<internal::QueueSubmission> queue_submission_optional_1 =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional_1);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional_1);
   tracker.CompleteSubmits(device);
 
   is_capturing = false;
@@ -1145,13 +1145,12 @@ TEST_F(SubmissionTrackerTest, ResetSlotsOnDebugMarkerAcrossTwoSubmissionsWhenNot
   tracker.MarkDebugMarkerEnd(command_buffer);
   tracker.MarkCommandBufferEnd(command_buffer);
   std::optional<internal::QueueSubmission> queue_submission_optional_2 =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional_2);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional_2);
   tracker.CompleteSubmits(device);
 
   EXPECT_THAT(actual_reset_slots_1, UnorderedElementsAre(kSlotIndex1, kSlotIndex3));
-  EXPECT_THAT(actual_reset_slots_2,
-              UnorderedElementsAre(kSlotIndex2, kSlotIndex4, kSlotIndex5, kSlotIndex6));
+  EXPECT_THAT(actual_reset_slots_2, UnorderedElementsAre(kSlotIndex2));
 
   EXPECT_TRUE(actual_capture_event.has_gpu_queue_submission());
   const orbit_grpc_protos::GpuQueueSubmission& actual_queue_submission =
@@ -1178,8 +1177,8 @@ TEST_F(SubmissionTrackerTest, ResetDebugMarkerSlotsWhenStopBeforeASubmission) {
   tracker.MarkCommandBufferEnd(command_buffer);
   is_capturing = false;
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   tracker.CompleteSubmits(device);
 
   EXPECT_THAT(actual_reset_slots,
@@ -1230,8 +1229,8 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBuffer) {
   pid_t tid = GetCurrentThreadId();
   uint64_t pre_submit_time = MonotonicTimestampNs();
   std::optional<internal::QueueSubmission> queue_submission_optional =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional);
   uint64_t post_submit_time = MonotonicTimestampNs();
   tracker.CompleteSubmits(device);
 
@@ -1298,8 +1297,8 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBufferAcro
   tracker.MarkCommandBufferEnd(command_buffer);
   uint64_t pre_submit_time_1 = MonotonicTimestampNs();
   std::optional<internal::QueueSubmission> queue_submission_optional_1 =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional_1);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional_1);
   uint64_t post_submit_time_1 = MonotonicTimestampNs();
   tracker.CompleteSubmits(device);
 
@@ -1308,8 +1307,8 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBufferAcro
   tracker.MarkDebugMarkerEnd(command_buffer);
   tracker.MarkCommandBufferEnd(command_buffer);
   std::optional<internal::QueueSubmission> queue_submission_optional_2 =
-      tracker.PreSubmission(1, &submit_info);
-  tracker.DoPostSubmitQueue(queue, 1, &submit_info, queue_submission_optional_2);
+      tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
+  tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional_2);
   tracker.CompleteSubmits(device);
 
   EXPECT_THAT(actual_reset_slots_1, UnorderedElementsAre(kSlotIndex1, kSlotIndex3));

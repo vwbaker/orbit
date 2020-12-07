@@ -126,14 +126,14 @@ std::optional<internal::QueueSubmission> LayerLogic::PreCallQueueSubmit(VkQueue 
                                                                         uint32_t submit_count,
                                                                         const VkSubmitInfo* submits,
                                                                         VkFence /*fence*/) {
-  return command_buffer_manager_.PreSubmission(submit_count, submits);
+  return command_buffer_manager_.PersistCommandBuffersOnSubmit(submit_count, submits);
 }
 
 void LayerLogic::PostCallQueueSubmit(
     VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits, VkFence /*fence*/,
     std::optional<internal::QueueSubmission> queue_submission_optional) {
-  command_buffer_manager_.DoPostSubmitQueue(queue, submit_count, submits,
-                                            queue_submission_optional);
+  command_buffer_manager_.PersistDebugMarkersOnSubmit(queue, submit_count, submits,
+                                                      queue_submission_optional);
 }
 
 void LayerLogic::PostCallQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* /*present_info*/) {

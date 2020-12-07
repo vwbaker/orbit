@@ -231,7 +231,12 @@ class SubmissionTracker {
   // Thus, our identification via the pointers become invalid. We will use the vkQueueSubmit
   // to make our data persistent until we have processed the results of the execution of these
   // command buffers (which will be done in the vkQueuePresentKHR).
-  [[nodiscard]] std::optional<internal::QueueSubmission> PreSubmission(
+  // If we are not capturing, that method will do nothing and return `nullopt`.
+  // Otherwise, it will create and return an internal::QueueSubmission object, holding the
+  // information about all command buffers recorded in this submission.
+  // It also takes a timestamp before the execution of the driver code for the submission.
+  // This allows us to map submissions from the Vulkan layer to the driver submissions.
+  [[nodiscard]] std::optional<internal::QueueSubmission> PersistCommandBuffersOnSubmit(
       uint32_t submit_count, const VkSubmitInfo* submits) {
     if (!IsCapturing()) {
       // The post submit routine will take care of clean up/slot resetting.
@@ -250,7 +255,6 @@ class SubmissionTracker {
         VkCommandBuffer command_buffer = submit_info.pCommandBuffers[command_buffer_index];
         CHECK(command_buffer_to_state_.contains(command_buffer));
         CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
-        // Command buffer timings:
 
         // If we neither recorded the end nor the begin of a command buffer, we have no information
         // to send.
@@ -266,10 +270,13 @@ class SubmissionTracker {
     return queue_submission;
   }
 
-  // Take a timestamp before and after the execution of the driver code for the submission.
-  // This allows us to map submissions from the vulkan layer to the driver submissions.
-  void DoPostSubmitQueue(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits,
-                         std::optional<internal::QueueSubmission> queue_submission_optional) {
+  // We assume to be capturing if `queue_submission_optional` has content, i.e. we were capturing
+  // on this VkQueueSubmit before calling into the driver.
+  // It also takes a timestamp after the execution of the driver code for the submission.
+  // This allows us to map submissions from the Vulkan layer to the driver submissions.
+  void PersistDebugMarkersOnSubmit(
+      VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits,
+      std::optional<internal::QueueSubmission> queue_submission_optional) {
     absl::WriterMutexLock lock(&mutex_);
     if (!queue_to_markers_.contains(queue)) {
       queue_to_markers_[queue] = {};
@@ -277,6 +284,9 @@ class SubmissionTracker {
     CHECK(queue_to_markers_.contains(queue));
     QueueMarkerState& markers = queue_to_markers_.at(queue);
 
+    // If we consider this to still catpuring, take a cpu timestamp as "post submission" such that
+    // the submission "meta information" is complete. We can then attach that also to each debug
+    // marker, as they may be spanned acrosse different submissions.
     if (queue_submission_optional.has_value()) {
       queue_submission_optional->meta_information.post_submission_cpu_timestamp =
           MonotonicTimestampNs();
@@ -339,6 +349,11 @@ class SubmissionTracker {
             case MarkerType::kDebugMarkerEnd: {
               internal::MarkerState marker_state = markers.marker_stack.top();
               markers.marker_stack.pop();
+              if (!queue_submission_optional.has_value()) {
+                if (marker_state.begin_info.has_value()) {
+                  slots_to_reset.push_back(marker_state.begin_info.value().slot_index);
+                }
+              }
               if (queue_submission_optional.has_value() && marker.slot_index.has_value() &&
                   !marker_state.cut_off) {
                 marker_state.end_info = submitted_marker;
@@ -517,6 +532,7 @@ class SubmissionTracker {
     std::vector<Marker> markers;
     uint32_t local_marker_stack_size;
   };
+
   uint32_t RecordTimestamp(VkCommandBuffer command_buffer,
                            VkPipelineStageFlagBits pipeline_stage_flags) {
     VkDevice device;
