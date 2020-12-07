@@ -8,15 +8,15 @@
 #include <memory>
 #include <vector>
 
+#include "OrbitBase/Logging.h"
 #include "OrbitClientData/CallstackData.h"
 #include "OrbitClientData/FunctionInfoSet.h"
 #include "OrbitClientData/ModuleManager.h"
+#include "OrbitClientData/PostProcessedSamplingData.h"
 #include "OrbitClientData/ProcessData.h"
 #include "OrbitClientData/TracepointCustom.h"
-#include "OrbitClientData/TracepointEventBuffer.h"
-#include "OrbitClientData/TracepointInfoManager.h"
+#include "OrbitClientData/TracepointData.h"
 #include "OrbitClientData/UserDefinedCaptureData.h"
-#include "OrbitClientModel/SamplingProfiler.h"
 #include "absl/container/flat_hash_map.h"
 #include "capture_data.pb.h"
 #include "process.pb.h"
@@ -33,8 +33,7 @@ class CaptureData {
         selected_tracepoints_{std::move(selected_tracepoints)},
         callstack_data_(std::make_unique<CallstackData>()),
         selection_callstack_data_(std::make_unique<CallstackData>()),
-        tracepoint_info_manager_(std::make_unique<TracepointInfoManager>()),
-        tracepoint_event_buffer_(std::make_unique<TracepointEventBuffer>()),
+        tracepoint_data_(std::make_unique<TracepointData>()),
         user_defined_capture_data_(std::move(user_defined_capture_data)) {}
 
   // We can not copy the unique_ptr, so we can not copy this object.
@@ -133,31 +132,20 @@ class CaptureData {
   [[nodiscard]] const CallstackData* GetCallstackData() const { return callstack_data_.get(); };
 
   [[nodiscard]] orbit_grpc_protos::TracepointInfo GetTracepointInfo(uint64_t key) const {
-    return tracepoint_info_manager_->Get(key);
+    return tracepoint_data_->GetTracepointInfo(key);
   }
 
-  [[nodiscard]] const TracepointInfoManager* GetTracepointInfoManager() const {
-    return tracepoint_info_manager_.get();
-  };
-
-  [[nodiscard]] const TracepointEventBuffer* GetTracepointEventBuffer() const {
-    return tracepoint_event_buffer_.get();
-  }
+  [[nodiscard]] const TracepointData* GetTracepointData() const { return tracepoint_data_.get(); }
 
   void ForEachTracepointEventOfThreadInTimeRange(
       int32_t thread_id, uint64_t min_tick, uint64_t max_tick,
       const std::function<void(const orbit_client_protos::TracepointEventInfo&)>& action) const {
-    return tracepoint_event_buffer_->ForEachTracepointEventOfThreadInTimeRange(thread_id, min_tick,
-                                                                               max_tick, action);
-  }
-
-  [[nodiscard]] const std::map<uint64_t, orbit_client_protos::TracepointEventInfo>&
-  GetTracepointsOfThread(int32_t thread_id) const {
-    return tracepoint_event_buffer_->GetTracepointsOfThread(thread_id);
+    return tracepoint_data_->ForEachTracepointEventOfThreadInTimeRange(thread_id, min_tick,
+                                                                       max_tick, action);
   }
 
   uint32_t GetNumTracepointsForThreadId(int32_t thread_id) const {
-    return tracepoint_event_buffer_->GetNumTracepointsForThreadId(thread_id);
+    return tracepoint_data_->GetNumTracepointEventsForThreadId(thread_id);
   }
 
   void AddUniqueCallStack(CallStack call_stack) {
@@ -172,14 +160,14 @@ class CaptureData {
 
   void AddUniqueTracepointEventInfo(uint64_t key,
                                     orbit_grpc_protos::TracepointInfo tracepoint_info) {
-    tracepoint_info_manager_->AddUniqueTracepointEventInfo(key, std::move(tracepoint_info));
+    tracepoint_data_->AddUniqueTracepointInfo(key, std::move(tracepoint_info));
   }
 
   void AddTracepointEventAndMapToThreads(uint64_t time, uint64_t tracepoint_hash,
                                          int32_t process_id, int32_t thread_id, int32_t cpu,
                                          bool is_same_pid_as_target) {
-    tracepoint_event_buffer_->AddTracepointEventAndMapToThreads(
-        time, tracepoint_hash, process_id, thread_id, cpu, is_same_pid_as_target);
+    tracepoint_data_->EmplaceTracepointEvent(time, tracepoint_hash, process_id, thread_id, cpu,
+                                             is_same_pid_as_target);
   }
 
   [[nodiscard]] const CallstackData* GetSelectionCallstackData() const {
@@ -192,10 +180,13 @@ class CaptureData {
 
   [[nodiscard]] const ProcessData* process() const { return &process_; }
 
-  [[nodiscard]] const SamplingProfiler& sampling_profiler() const { return sampling_profiler_; }
+  [[nodiscard]] const PostProcessedSamplingData& post_processed_sampling_data() const {
+    CHECK(post_processed_sampling_data_.has_value());
+    return post_processed_sampling_data_.value();
+  }
 
-  void set_sampling_profiler(SamplingProfiler sampling_profiler) {
-    sampling_profiler_ = std::move(sampling_profiler);
+  void set_post_processed_sampling_data(PostProcessedSamplingData post_processed_sampling_data) {
+    post_processed_sampling_data_ = std::move(post_processed_sampling_data);
   }
 
   void EnableFrameTrack(const orbit_client_protos::FunctionInfo& function);
@@ -218,10 +209,9 @@ class CaptureData {
   // selection_callstack_data_ is subset of callstack_data_
   std::unique_ptr<CallstackData> selection_callstack_data_;
 
-  std::unique_ptr<TracepointInfoManager> tracepoint_info_manager_;
-  std::unique_ptr<TracepointEventBuffer> tracepoint_event_buffer_;
+  std::unique_ptr<TracepointData> tracepoint_data_;
 
-  SamplingProfiler sampling_profiler_;
+  std::optional<PostProcessedSamplingData> post_processed_sampling_data_;
 
   absl::flat_hash_map<uint64_t, orbit_client_protos::LinuxAddressInfo> address_infos_;
 

@@ -4,9 +4,14 @@
 
 #include "LibunwindstackUnwinder.h"
 
-#include <OrbitBase/Logging.h>
+#include <unwindstack/Memory.h>
+#include <unwindstack/Regs.h>
+#include <unwindstack/RegsX86_64.h>
 
 #include <array>
+#include <cstdint>
+
+#include "OrbitBase/Logging.h"
 
 namespace LinuxTracing {
 

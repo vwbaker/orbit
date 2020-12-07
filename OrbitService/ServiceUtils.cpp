@@ -15,7 +15,6 @@
 #include <unistd.h>
 
 #include <charconv>
-#include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -27,7 +26,6 @@
 #include "OrbitBase/Result.h"
 #include "OrbitBase/SafeStrerror.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/strip.h"
 
 namespace orbit_service::utils {
 
@@ -289,18 +287,6 @@ std::optional<TotalCpuTime> GetCumulativeTotalCpuTime() {
       })};
 
   return TotalCpuTime{jiffies, cpus};
-}
-
-ErrorMessageOr<Path> GetExecutablePath(int32_t pid) {
-  char buffer[PATH_MAX];
-
-  ssize_t length = readlink(absl::StrFormat("/proc/%d/exe", pid).c_str(), buffer, sizeof(buffer));
-  if (length == -1) {
-    return ErrorMessage(absl::StrFormat("Unable to get executable path of process with pid %d: %s",
-                                        pid, SafeStrerror(errno)));
-  }
-
-  return Path{std::string(buffer, length)};
 }
 
 ErrorMessageOr<std::string> ReadFileToString(const std::filesystem::path& file_name) {

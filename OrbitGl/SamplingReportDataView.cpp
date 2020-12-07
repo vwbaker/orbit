@@ -8,9 +8,9 @@
 
 #include "App.h"
 #include "CallStackDataView.h"
+#include "OrbitBase/ThreadConstants.h"
 #include "OrbitClientData/FunctionUtils.h"
 #include "OrbitClientData/ModuleData.h"
-#include "Path.h"
 #include "absl/strings/str_format.h"
 
 using orbit_client_protos::FunctionInfo;
@@ -49,9 +49,7 @@ std::string SamplingReportDataView::GetValue(int row, int column) {
     case kColumnInclusive:
       return absl::StrFormat("%.2f", func.inclusive);
     case kColumnModuleName:
-      // LOG("%s", func.module_path);
-      // LOG("%s", Path::GetFileName(func.module_path));
-      return Path::GetFileName(func.module_path);
+      return std::filesystem::path(func.module_path).filename().string();
     case kColumnFile:
       return func.file;
     case kColumnLine:
@@ -73,10 +71,11 @@ std::string SamplingReportDataView::GetValue(int row, int column) {
     return OrbitUtils::Compare(Func(functions[a]), Func(functions[b]), ascending); \
   }
 
-#define ORBIT_MODULE_NAME_FUNC_SORT                                                     \
-  [&](int a, int b) {                                                                   \
-    return OrbitUtils::Compare(Path::GetFileName(functions[a].module_path),             \
-                               Path::GetFileName(functions[b].module_path), ascending); \
+#define ORBIT_MODULE_NAME_FUNC_SORT                                                        \
+  [&](int a, int b) {                                                                      \
+    return OrbitUtils::Compare(std::filesystem::path(functions[a].module_path).filename(), \
+                               std::filesystem::path(functions[b].module_path).filename(), \
+                               ascending);                                                 \
   }
 
 void SamplingReportDataView::DoSort() {
@@ -276,7 +275,7 @@ void SamplingReportDataView::SetSampledFunctions(const std::vector<SampledFuncti
 
 void SamplingReportDataView::SetThreadID(ThreadID tid) {
   tid_ = tid;
-  if (tid == SamplingProfiler::kAllThreadsFakeTid) {
+  if (tid == orbit_base::kAllProcessThreadsTid) {
     name_ = absl::StrFormat("%s\n(all threads)", GOrbitApp->GetCaptureData().process_name());
   } else {
     name_ = absl::StrFormat("%s\n[%d]", GOrbitApp->GetCaptureData().GetThreadName(tid_), tid_);
@@ -291,7 +290,7 @@ void SamplingReportDataView::DoFilter() {
   for (size_t i = 0; i < functions_.size(); ++i) {
     SampledFunction& func = functions_[i];
     std::string name = ToLower(func.name);
-    std::string module_name = ToLower(Path::GetFileName(func.module_path));
+    std::string module_name = ToLower(std::filesystem::path(func.module_path).filename().string());
 
     bool match = true;
 

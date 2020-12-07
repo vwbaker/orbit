@@ -9,8 +9,8 @@
 #include <memory>
 
 #include "CoreUtils.h"
+#include "OrbitBase/ExecutablePath.h"
 #include "OrbitClientData/Callstack.h"
-#include "Path.h"
 #include "capture_data.pb.h"
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/message.h"
@@ -37,14 +37,15 @@ void WriteMessage(const google::protobuf::Message* message,
 
 std::string GetCaptureFileName(const CaptureData& capture_data) {
   time_t timestamp = std::chrono::system_clock::to_time_t(capture_data.capture_start_time());
-  std::string result = absl::StrCat(Path::StripExtension(capture_data.process_name()), "_",
-                                    OrbitUtils::FormatTime(timestamp));
+  std::string result =
+      absl::StrCat(std::filesystem::path(capture_data.process_name()).stem().string(), "_",
+                   OrbitUtils::FormatTime(timestamp));
   IncludeOrbitExtensionInFile(result);
   return result;
 }
 
 void IncludeOrbitExtensionInFile(std::string& file_name) {
-  const std::string extension = Path::GetExtension(file_name);
+  const std::string extension = std::filesystem::path(file_name).extension().string();
   if (extension != kFileOrbitExtension) {
     file_name.append(kFileOrbitExtension);
   }
@@ -135,7 +136,7 @@ CaptureInfo GenerateCaptureInfo(
         capture_info.add_callstack_events()->CopyFrom(event);
       });
 
-  capture_data.GetTracepointInfoManager()->ForEachUniqueTracepointInfo(
+  capture_data.GetTracepointData()->ForEachUniqueTracepointInfo(
       [&capture_info](const orbit_client_protos::TracepointInfo& tracepoint_info) {
         orbit_client_protos::TracepointInfo* new_tracepoint_info =
             capture_info.add_tracepoint_infos();
@@ -144,7 +145,7 @@ CaptureInfo GenerateCaptureInfo(
         new_tracepoint_info->set_tracepoint_info_key(tracepoint_info.tracepoint_info_key());
       });
 
-  capture_data.GetTracepointEventBuffer()->ForEachTracepointEvent(
+  capture_data.GetTracepointData()->ForEachTracepointEvent(
       [&capture_info](const orbit_client_protos::TracepointEventInfo& tracepoint_event_info) {
         capture_info.add_tracepoint_event_infos()->CopyFrom(tracepoint_event_info);
       });

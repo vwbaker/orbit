@@ -4,15 +4,16 @@
 
 #include "OrbitClientServices/ProcessManager.h"
 
-#include <chrono>
+#include <absl/synchronization/mutex.h>
+
+#include <algorithm>
 #include <memory>
 #include <string>
+#include <thread>
 
 #include "OrbitBase/Logging.h"
+#include "OrbitBase/Result.h"
 #include "OrbitClientServices/ProcessClient.h"
-#include "grpcpp/grpcpp.h"
-#include "outcome.hpp"
-#include "symbol.pb.h"
 
 namespace {
 
@@ -23,6 +24,9 @@ class ProcessManagerImpl final : public ProcessManager {
  public:
   explicit ProcessManagerImpl(const std::shared_ptr<grpc::Channel>& channel,
                               absl::Duration refresh_timeout);
+  ProcessManagerImpl(ProcessManagerImpl&&) = default;
+  ProcessManagerImpl& operator=(ProcessManagerImpl&&) = default;
+  ~ProcessManagerImpl() override { ShutdownAndWait(); }
 
   void SetProcessListUpdateListener(const std::function<void(ProcessManager*)>& listener) override;
 
@@ -37,7 +41,7 @@ class ProcessManagerImpl final : public ProcessManager {
   ErrorMessageOr<std::string> FindDebugInfoFile(const std::string& module_path) override;
 
   void Start();
-  void Shutdown() override;
+  void ShutdownAndWait() noexcept override;
 
  private:
   void WorkerFunction();
@@ -85,12 +89,16 @@ void ProcessManagerImpl::Start() {
   worker_thread_ = std::thread([this] { WorkerFunction(); });
 }
 
-void ProcessManagerImpl::Shutdown() {
+void ProcessManagerImpl::ShutdownAndWait() noexcept {
   shutdown_mutex_.Lock();
   shutdown_initiated_ = true;
   shutdown_mutex_.Unlock();
   if (worker_thread_.joinable()) {
-    worker_thread_.join();
+    try {
+      worker_thread_.join();
+    } catch (const std::exception& e) {
+      FATAL("Exception during call to worker_thread_.join: %s", e.what());
+    }
   }
 }
 

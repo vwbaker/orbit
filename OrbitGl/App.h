@@ -39,6 +39,7 @@
 #include "OrbitClientData/FunctionInfoSet.h"
 #include "OrbitClientData/ModuleData.h"
 #include "OrbitClientData/ModuleManager.h"
+#include "OrbitClientData/PostProcessedSamplingData.h"
 #include "OrbitClientData/ProcessData.h"
 #include "OrbitClientData/TracepointCustom.h"
 #include "OrbitClientServices/CrashManager.h"
@@ -143,21 +144,21 @@ class OrbitApp final : public DataViewFactory, public CaptureListener {
   void StopIntrospection();
 
   void SetSamplingReport(
-      SamplingProfiler sampling_profiler,
+      PostProcessedSamplingData post_processed_sampling_data,
       absl::flat_hash_map<CallstackID, std::shared_ptr<CallStack>> unique_callstacks);
   void SetSelectionReport(
-      SamplingProfiler sampling_profiler,
+      PostProcessedSamplingData post_processed_sampling_data,
       absl::flat_hash_map<CallstackID, std::shared_ptr<CallStack>> unique_callstacks,
       bool has_summary);
   void SetTopDownView(const CaptureData& capture_data);
   void ClearTopDownView();
-  void SetSelectionTopDownView(const SamplingProfiler& selection_sampling_profiler,
+  void SetSelectionTopDownView(const PostProcessedSamplingData& selection_post_processed_data,
                                const CaptureData& capture_data);
   void ClearSelectionTopDownView();
 
   void SetBottomUpView(const CaptureData& capture_data);
   void ClearBottomUpView();
-  void SetSelectionBottomUpView(const SamplingProfiler& selection_sampling_profiler,
+  void SetSelectionBottomUpView(const PostProcessedSamplingData& selection_post_processed_data,
                                 const CaptureData& capture_data);
   void ClearSelectionBottomUpView();
 
@@ -251,6 +252,10 @@ class OrbitApp final : public DataViewFactory, public CaptureListener {
   void SetSelectionBottomUpViewCallback(CallTreeViewCallback callback) {
     selection_bottom_up_view_callback_ = std::move(callback);
   }
+  using TimerSelectedCallback = std::function<void(const orbit_client_protos::TimerInfo*)>;
+  void SetTimerSelectedCallback(TimerSelectedCallback callback) {
+    timer_selected_callback_ = callback;
+  }
 
   using SaveFileCallback = std::function<std::string(const std::string& extension)>;
   void SetSaveFileCallback(SaveFileCallback callback) { save_file_callback_ = std::move(callback); }
@@ -327,11 +332,17 @@ class OrbitApp final : public DataViewFactory, public CaptureListener {
   void SetVisibleFunctions(absl::flat_hash_set<uint64_t> visible_functions);
   [[nodiscard]] bool IsFunctionVisible(uint64_t function_address);
 
+  [[nodiscard]] uint64_t highlighted_function() const;
+  void set_highlighted_function(uint64_t highlighted_function_address);
+
   [[nodiscard]] ThreadID selected_thread_id() const;
   void set_selected_thread_id(ThreadID thread_id);
 
   [[nodiscard]] const TextBox* selected_text_box() const;
   void SelectTextBox(const TextBox* text_box);
+  void DeselectTextBox();
+
+  [[nodiscard]] uint64_t GetFunctionAddressToHighlight() const;
 
   void SelectCallstackEvents(
       const std::vector<orbit_client_protos::CallstackEvent>& selected_callstack_events,
@@ -375,7 +386,8 @@ class OrbitApp final : public DataViewFactory, public CaptureListener {
   ErrorMessageOr<void> SelectFunctionsFromHashes(const ModuleData* module,
                                                  const std::vector<uint64_t>& function_hashes);
 
-  ErrorMessageOr<orbit_client_protos::PresetInfo> ReadPresetFromFile(const std::string& filename);
+  ErrorMessageOr<orbit_client_protos::PresetInfo> ReadPresetFromFile(
+      const std::filesystem::path& filename);
 
   ErrorMessageOr<void> SavePreset(const std::string& filename);
   [[nodiscard]] ScopedStatus CreateScopedStatus(const std::string& initial_message);
@@ -418,6 +430,7 @@ class OrbitApp final : public DataViewFactory, public CaptureListener {
   ClipboardCallback clipboard_callback_;
   SecureCopyCallback secure_copy_callback_;
   ShowEmptyFrameTrackWarningCallback empty_frame_track_warning_callback_;
+  TimerSelectedCallback timer_selected_callback_;
 
   std::vector<DataView*> panels_;
 

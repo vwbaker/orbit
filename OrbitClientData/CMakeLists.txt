@@ -21,10 +21,10 @@ target_sources(OrbitClientData PUBLIC
         include/OrbitClientData/FunctionUtils.h
         include/OrbitClientData/ModuleData.h
         include/OrbitClientData/ModuleManager.h
+        include/OrbitClientData/PostProcessedSamplingData.h
         include/OrbitClientData/ProcessData.h
         include/OrbitClientData/TracepointCustom.h
-        include/OrbitClientData/TracepointEventBuffer.h
-        include/OrbitClientData/TracepointInfoManager.h
+        include/OrbitClientData/TracepointData.h
         include/OrbitClientData/UserDefinedCaptureData.h)
 
 target_sources(OrbitClientData PRIVATE
@@ -32,9 +32,9 @@ target_sources(OrbitClientData PRIVATE
         FunctionUtils.cpp
         ModuleData.cpp
         ModuleManager.cpp
+        PostProcessedSamplingData.cpp
         ProcessData.cpp
-        TracepointEventBuffer.cpp
-        TracepointInfoManager.cpp
+        TracepointData.cpp
         UserDefinedCaptureData.cpp)
 
 target_link_libraries(OrbitClientData PUBLIC 
@@ -53,8 +53,7 @@ target_sources(OrbitClientDataTests PRIVATE
         ModuleDataTest.cpp
         ModuleManagerTest.cpp
         ProcessDataTest.cpp
-        TracepointEventBufferTest.cpp
-        TracepointInfoManagerTest.cpp
+        TracepointDataTest.cpp
         UserDefinedCaptureDataTest.cpp)
 
 target_link_libraries(OrbitClientDataTests PRIVATE 
