@@ -83,7 +83,7 @@ struct QueueSubmission {
  * safely accessed from different threads.
  */
 template <class DispatchTable, class DeviceManager, class TimerQueryPool>
-class SubmissionTracker {
+class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
  public:
   explicit SubmissionTracker(uint32_t max_local_marker_depth_per_command_buffer,
                              DispatchTable* dispatch_table, TimerQueryPool* timer_query_pool,
@@ -94,6 +94,9 @@ class SubmissionTracker {
         timer_query_pool_(timer_query_pool),
         device_manager_(device_manager),
         vulkan_layer_producer_{vulkan_layer_producer} {
+    CHECK(dispatch_table_ != nullptr);
+    CHECK(timer_query_pool_ != nullptr);
+    CHECK(device_manager_ != nullptr);
     CHECK(vulkan_layer_producer_ != nullptr);
   }
 
@@ -284,15 +287,15 @@ class SubmissionTracker {
     CHECK(queue_to_markers_.contains(queue));
     QueueMarkerState& markers = queue_to_markers_.at(queue);
 
-    // If we consider this to still catpuring, take a cpu timestamp as "post submission" such that
+    // If we consider this to still capturing, take a cpu timestamp as "post submission" such that
     // the submission "meta information" is complete. We can then attach that also to each debug
-    // marker, as they may be spanned acrosse different submissions.
+    // marker, as they may be spanned across different submissions.
     if (queue_submission_optional.has_value()) {
       queue_submission_optional->meta_information.post_submission_cpu_timestamp =
           MonotonicTimestampNs();
     }
 
-    std::vector<uint32_t> slots_to_reset;
+    std::vector<uint32_t> begin_markers_from_prev_submit_to_reset;
     VkDevice device = VK_NULL_HANDLE;
     for (uint32_t submit_index = 0; submit_index < submit_count; ++submit_index) {
       VkSubmitInfo submit_info = submits[submit_index];
@@ -306,29 +309,13 @@ class SubmissionTracker {
         CHECK(command_buffer_to_state_.contains(command_buffer));
         CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
 
-        // If we just stopped capturing, we want to reset the slot index
-        if (!queue_submission_optional.has_value()) {
-          if (state.command_buffer_begin_slot_index.has_value()) {
-            slots_to_reset.push_back(state.command_buffer_begin_slot_index.value());
-          }
-          if (state.command_buffer_end_slot_index.has_value()) {
-            slots_to_reset.push_back(state.command_buffer_end_slot_index.value());
-          }
-        }
-
         // Debug markers:
         for (const Marker& marker : state.markers) {
           std::optional<internal::SubmittedMarker> submitted_marker = std::nullopt;
-          if (marker.slot_index.has_value()) {
-            if (queue_submission_optional.has_value()) {
-              submitted_marker = {.meta_information = queue_submission_optional->meta_information,
-                                  .slot_index = marker.slot_index.value()};
-            } else {
-              slots_to_reset.push_back(marker.slot_index.value());
-            }
+          if (marker.slot_index.has_value() && queue_submission_optional.has_value()) {
+            submitted_marker = {.meta_information = queue_submission_optional->meta_information,
+                                .slot_index = marker.slot_index.value()};
           }
-
-          // TODO: Reset cut-off marker slots
 
           switch (marker.type) {
             case MarkerType::kDebugMarkerBegin: {
@@ -349,11 +336,15 @@ class SubmissionTracker {
             case MarkerType::kDebugMarkerEnd: {
               internal::MarkerState marker_state = markers.marker_stack.top();
               markers.marker_stack.pop();
-              if (!queue_submission_optional.has_value()) {
-                if (marker_state.begin_info.has_value()) {
-                  slots_to_reset.push_back(marker_state.begin_info.value().slot_index);
-                }
+
+              // If there is a begin marker slot from a previous submission or one that was cut off,
+              // this is our chance to reset the slot.
+              if (marker_state.begin_info.has_value() &&
+                  (!queue_submission_optional.has_value() || marker_state.cut_off)) {
+                begin_markers_from_prev_submit_to_reset.push_back(
+                    marker_state.begin_info.value().slot_index);
               }
+
               if (queue_submission_optional.has_value() && marker.slot_index.has_value() &&
                   !marker_state.cut_off) {
                 marker_state.end_info = submitted_marker;
@@ -369,8 +360,8 @@ class SubmissionTracker {
     }
 
     if (!queue_submission_optional.has_value()) {
-      if (!slots_to_reset.empty()) {
-        timer_query_pool_->ResetQuerySlots(device, slots_to_reset);
+      if (!begin_markers_from_prev_submit_to_reset.empty()) {
+        timer_query_pool_->ResetQuerySlots(device, begin_markers_from_prev_submit_to_reset);
       }
       return;
     }
@@ -508,6 +499,43 @@ class SubmissionTracker {
     }
     for (const auto& command_buffer : command_buffers) {
       ResetCommandBuffer(command_buffer);
+    }
+  }
+
+  void OnCaptureStart() override {}
+
+  void OnCaptureStop() override {}
+
+  void OnCaptureFinished() override {
+    absl::WriterMutexLock lock(&mutex_);
+    std::vector<uint32_t> slots_to_reset;
+
+    VkDevice device = VK_NULL_HANDLE;
+
+    for (auto& [command_buffer, command_buffer_state] : command_buffer_to_state_) {
+      if (device == VK_NULL_HANDLE) {
+        CHECK(command_buffer_to_device_.contains(command_buffer));
+        device = command_buffer_to_device_.at(command_buffer);
+      }
+      if (command_buffer_state.command_buffer_begin_slot_index.has_value()) {
+        slots_to_reset.push_back(command_buffer_state.command_buffer_begin_slot_index.value());
+        command_buffer_state.command_buffer_begin_slot_index.reset();
+      }
+
+      if (command_buffer_state.command_buffer_end_slot_index.has_value()) {
+        slots_to_reset.push_back(command_buffer_state.command_buffer_end_slot_index.value());
+        command_buffer_state.command_buffer_end_slot_index.reset();
+      }
+
+      for (Marker& marker : command_buffer_state.markers) {
+        if (marker.slot_index.has_value()) {
+          slots_to_reset.push_back(marker.slot_index.value());
+          marker.slot_index.reset();
+        }
+      }
+    }
+    if (!slots_to_reset.empty()) {
+      timer_query_pool_->ResetQuerySlots(device, slots_to_reset);
     }
   }
 

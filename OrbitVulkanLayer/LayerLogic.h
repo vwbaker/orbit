@@ -199,6 +199,7 @@ class LayerLogic {
     if (vulkan_layer_producer_ == nullptr) {
       vulkan_layer_producer_ = std::make_unique<VulkanLayerProducerImpl>();
       vulkan_layer_producer_->BringUp(orbit_service::CreateProducerSideChannel());
+      vulkan_layer_producer_->SetCaptureStatusListener(&command_buffer_manager_);
     }
   }
 
