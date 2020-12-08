@@ -53,6 +53,16 @@ struct Color {
   float alpha;
 };
 
+// Identifies a particular debug marker region. We have a stack of all markers of a queue, that gets
+// updated upon a submission (VkQueueSubmit). If at that time we have a value for the end_info, we
+// use that structure to persist the marker description. So once it is submitted, the
+// end_info will always set.
+// Beside the information about the begin/end, it also stores the text, color and the depth of the
+// marker. If a debug marker begin was limited because of its depth, cut_off is set to true.
+// This allows end markers on a different submission to also through the end marker away.
+// Example: Max Depth = 1
+// Submission 1: Begin("Foo"), Begin("Bar) -- "Bar" will be cut-off
+// Submission 2: End("Bar"), End("Foo") -- We now know, that the first end needs to be cut-off.
 struct MarkerState {
   std::optional<SubmittedMarker> begin_info;
   std::optional<SubmittedMarker> end_info;
@@ -67,6 +77,9 @@ struct SubmitInfo {
   std::vector<SubmittedCommandBuffer> command_buffers;
 };
 
+// Wraps up all the data that needs to be persistent upon a submission (VkQueueSubmit).
+// `completed_markers` are all the debug markers, that got completed (via "End") within this
+// submission. Their "Begin" might still be in a different submission.
 struct QueueSubmission {
   SubmissionMetaInformation meta_information;
   std::vector<SubmitInfo> submit_infos;
@@ -108,6 +121,9 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
     CHECK(device_manager_ != nullptr);
   }
 
+  // Sets a producer to be used to enqueue capture events and ask if we are capturing.
+  // We will also register our self as CaptureStatusListener, in order to get nofified on
+  // capture finish (OnCaptureFinished). Will reset the open query slots then.
   void SetVulkanLayerProducer(VulkanLayerProducer* vulkan_layer_producer) {
     vulkan_layer_producer_ = vulkan_layer_producer;
     if (vulkan_layer_producer_ != nullptr) {
@@ -222,6 +238,7 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
       state.markers.back().slot_index = std::make_optional(slot_index);
     }
   }
+
   void MarkDebugMarkerEnd(VkCommandBuffer command_buffer) {
     bool too_many_markers;
     {
@@ -251,6 +268,7 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
       state.markers.back().slot_index = std::make_optional(slot_index);
     }
   }
+
   // After command buffers are submitted into a queue, they can be reused for further operations.
   // Thus, our identification via the pointers become invalid. We will use the vkQueueSubmit
   // to make our data persistent until we have processed the results of the execution of these
@@ -629,8 +647,6 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
     VkResult result_status = dispatch_table_->GetQueryPoolResults(device)(
         device, query_pool, slot_index, 1, sizeof(timestamp), &timestamp, kResultStride,
         VK_QUERY_RESULT_64_BIT);
-    // TODO: That should be rather an if and if it is false, we need to push back the submission for
-    // later
     CHECK(result_status == VK_SUCCESS);
 
     return static_cast<uint64_t>(static_cast<double>(timestamp) * timestamp_period);
