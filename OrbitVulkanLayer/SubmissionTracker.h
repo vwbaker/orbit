@@ -19,24 +19,34 @@ namespace orbit_vulkan_layer {
 
 namespace internal {
 
+// Stores meta information about a submit (VkQueueSubmit), e.g. to allow to identify the matching
+// Gpu tracepoint.
 struct SubmissionMetaInformation {
   uint64_t pre_submission_cpu_timestamp;
   uint64_t post_submission_cpu_timestamp;
   int32_t thread_id;
 };
 
+// A persistent version of a command buffer that was submitted and its begin/end slot in the
+// `TimerQueryPoool`. Note that the begin is optional, as it might not be part of the capture.
+// This struct is created if we capture the submission, so if we would not have captured the end
+// we also not have captured the begin, and don't need to store info about that command buffer at
+// all.
 struct SubmittedCommandBuffer {
   std::optional<uint32_t> command_buffer_begin_slot_index;
   uint32_t command_buffer_end_slot_index;
 };
 
+// A persistent version of a debug marker (either begin or end) that was submitted and its slot
+// in the `TimerQueryPool`. Note that we also store the `SubmissionMetaInformation` as begin markers
+// can originate in different submissions then the matching end markers.
 struct SubmittedMarker {
   SubmissionMetaInformation meta_information;
   uint32_t slot_index;
 };
 
+// Represents a color to be used to in debug markers. The values are all in range [0.f, 1.f.].
 struct Color {
-  // Values are all in range [0.f, 1.f.]
   float red;
   float green;
   float blue;
@@ -52,6 +62,7 @@ struct MarkerState {
   bool cut_off;
 };
 
+// A single submission (VkQueueSubmit) can contain multiple `SubmitInfo
 struct SubmitInfo {
   std::vector<SubmittedCommandBuffer> command_buffers;
 };
@@ -87,17 +98,27 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
  public:
   explicit SubmissionTracker(uint32_t max_local_marker_depth_per_command_buffer,
                              DispatchTable* dispatch_table, TimerQueryPool* timer_query_pool,
-                             DeviceManager* device_manager,
-                             std::unique_ptr<VulkanLayerProducer>* vulkan_layer_producer)
+                             DeviceManager* device_manager)
       : max_local_marker_depth_per_command_buffer_(max_local_marker_depth_per_command_buffer),
         dispatch_table_(dispatch_table),
         timer_query_pool_(timer_query_pool),
-        device_manager_(device_manager),
-        vulkan_layer_producer_{vulkan_layer_producer} {
+        device_manager_(device_manager) {
     CHECK(dispatch_table_ != nullptr);
     CHECK(timer_query_pool_ != nullptr);
     CHECK(device_manager_ != nullptr);
-    CHECK(vulkan_layer_producer_ != nullptr);
+  }
+
+  void SetVulkanLayerProducer(VulkanLayerProducer* vulkan_layer_producer) {
+    vulkan_layer_producer_ = vulkan_layer_producer;
+    if (vulkan_layer_producer_ != nullptr) {
+      vulkan_layer_producer_->SetCaptureStatusListener(this);
+    }
+  }
+
+  // Sets the maximal depth of debug markers within one command buffer. If set to 0, command buffers
+  // won't be limited by depth.
+  void SetMaxLocalMarkerDepthPerCommandBuffer(uint32_t max_local_marker_depth_per_command_buffer) {
+    max_local_marker_depth_per_command_buffer_ = max_local_marker_depth_per_command_buffer;
   }
 
   void TrackCommandBuffers(VkDevice device, VkCommandPool pool,
@@ -305,7 +326,7 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
           MonotonicTimestampNs();
     }
 
-    std::vector<uint32_t> begin_markers_from_prev_submit_to_reset;
+    std::vector<uint32_t> marker_slots_to_reset;
     VkDevice device = VK_NULL_HANDLE;
     for (uint32_t submit_index = 0; submit_index < submit_count; ++submit_index) {
       VkSubmitInfo submit_info = submits[submit_index];
@@ -319,7 +340,6 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
         CHECK(command_buffer_to_state_.contains(command_buffer));
         CommandBufferState& state = command_buffer_to_state_.at(command_buffer);
 
-        // Debug markers:
         for (const Marker& marker : state.markers) {
           std::optional<internal::SubmittedMarker> submitted_marker = std::nullopt;
           if (marker.slot_index.has_value() && queue_submission_optional.has_value()) {
@@ -350,15 +370,13 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
               // If there is a begin marker slot from a previous submission, this is our chance to
               // reset the slot.
               if (marker_state.begin_info.has_value() && !queue_submission_optional.has_value()) {
-                begin_markers_from_prev_submit_to_reset.push_back(
-                    marker_state.begin_info.value().slot_index);
+                marker_slots_to_reset.push_back(marker_state.begin_info.value().slot_index);
               }
 
-              // If the begin marker was cut off, but the end marker was not (in a different
-              // submission)
+              // If the begin marker was cut off, but the end marker was not (as it is in a
+              // different submission), we reset the slot
               if (marker_state.cut_off && marker.slot_index.has_value()) {
-                begin_markers_from_prev_submit_to_reset.push_back(marker.slot_index.value());
-                break;
+                marker_slots_to_reset.push_back(marker.slot_index.value());
               }
 
               if (queue_submission_optional.has_value() && marker.slot_index.has_value() &&
@@ -375,8 +393,8 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
       }
     }
 
-    if (!begin_markers_from_prev_submit_to_reset.empty()) {
-      timer_query_pool_->ResetQuerySlots(device, begin_markers_from_prev_submit_to_reset);
+    if (!marker_slots_to_reset.empty()) {
+      timer_query_pool_->ResetQuerySlots(device, marker_slots_to_reset);
     }
 
     if (!queue_submission_optional.has_value()) {
@@ -413,11 +431,12 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
       WriteCommandBufferTimings(completed_submission, submission_proto, query_slots_to_reset,
                                 device, query_pool, timestamp_period);
 
-      // Now for the debug markers:
       WriteDebugMarkers(completed_submission, submission_proto, query_slots_to_reset, device,
                         query_pool, timestamp_period);
 
-      (*vulkan_layer_producer_)->EnqueueCaptureEvent(std::move(capture_event));
+      if (vulkan_layer_producer_ != nullptr) {
+        vulkan_layer_producer_->EnqueueCaptureEvent(std::move(capture_event));
+      }
     }
 
     timer_query_pool_->ResetQuerySlots(device, query_slots_to_reset);
@@ -664,8 +683,10 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
       query_slots_to_reset.push_back(marker_state.end_info->slot_index);
 
       orbit_grpc_protos::GpuDebugMarker* marker_proto = submission_proto->add_completed_markers();
-      marker_proto->set_text_key(
-          (*vulkan_layer_producer_)->InternStringIfNecessaryAndGetKey(marker_state.text));
+      if (vulkan_layer_producer_ != nullptr) {
+        marker_proto->set_text_key(
+            vulkan_layer_producer_->InternStringIfNecessaryAndGetKey(marker_state.text));
+      }
       if (marker_state.color.red != 0.0f || marker_state.color.green != 0.0f ||
           marker_state.color.blue != 0.0f || marker_state.color.alpha != 0.0f) {
         auto color = marker_proto->mutable_color();
@@ -710,9 +731,9 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
   DeviceManager* device_manager_;
 
   [[nodiscard]] bool IsCapturing() {
-    return *vulkan_layer_producer_ != nullptr && (*vulkan_layer_producer_)->IsCapturing();
+    return vulkan_layer_producer_ != nullptr && vulkan_layer_producer_->IsCapturing();
   }
-  std::unique_ptr<VulkanLayerProducer>* vulkan_layer_producer_;
+  VulkanLayerProducer* vulkan_layer_producer_;
 };
 
 }  // namespace orbit_vulkan_layer

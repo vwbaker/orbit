@@ -37,8 +37,7 @@ class LayerLogic {
   LayerLogic()
       : device_manager_(&dispatch_table_),
         timer_query_pool_(&dispatch_table_, kNumTimerQuerySlots),
-        command_buffer_manager_(0, &dispatch_table_, &timer_query_pool_, &device_manager_,
-                                &vulkan_layer_producer_) {}
+        command_buffer_manager_(0, &dispatch_table_, &timer_query_pool_, &device_manager_) {}
 
   ~LayerLogic() { CloseVulkanLayerProducerIfNecessary(); }
 
@@ -199,7 +198,7 @@ class LayerLogic {
     if (vulkan_layer_producer_ == nullptr) {
       vulkan_layer_producer_ = std::make_unique<VulkanLayerProducerImpl>();
       vulkan_layer_producer_->BringUp(orbit_service::CreateProducerSideChannel());
-      vulkan_layer_producer_->SetCaptureStatusListener(&command_buffer_manager_);
+      command_buffer_manager_.SetVulkanLayerProducer(vulkan_layer_producer_.get());
     }
   }
 
@@ -211,6 +210,7 @@ class LayerLogic {
       LOG("Taking down VulkanLayerProducer");
       vulkan_layer_producer_->TakeDown();
       vulkan_layer_producer_.reset();
+      command_buffer_manager_.SetVulkanLayerProducer(nullptr);
     }
   }
 
