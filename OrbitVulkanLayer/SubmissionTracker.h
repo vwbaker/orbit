@@ -242,9 +242,11 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
   [[nodiscard]] std::optional<internal::QueueSubmission> PersistCommandBuffersOnSubmit(
       uint32_t submit_count, const VkSubmitInfo* submits) {
     if (!IsCapturing()) {
-      // The post submit routine will take care of clean up/slot resetting.
+      // `PersistDebugMarkersOnSubmit` and `OnCaptureFinished` will take care of clean up and
+      // slot resetting.
       return std::nullopt;
     }
+
     internal::QueueSubmission queue_submission;
     queue_submission.meta_information.pre_submission_cpu_timestamp = MonotonicTimestampNs();
     queue_submission.meta_information.thread_id = GetCurrentThreadId();
@@ -261,12 +263,20 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
 
         // If we neither recorded the end nor the begin of a command buffer, we have no information
         // to send.
-        if (state.command_buffer_end_slot_index.has_value()) {
-          internal::SubmittedCommandBuffer submitted_command_buffer{
-              .command_buffer_begin_slot_index = state.command_buffer_begin_slot_index,
-              .command_buffer_end_slot_index = state.command_buffer_end_slot_index.value()};
-          submitted_submit_info.command_buffers.emplace_back(submitted_command_buffer);
+        if (!state.command_buffer_end_slot_index.has_value()) {
+          CHECK(!state.command_buffer_end_slot_index.has_value());
+          continue;
         }
+
+        internal::SubmittedCommandBuffer submitted_command_buffer{
+            .command_buffer_begin_slot_index = state.command_buffer_begin_slot_index,
+            .command_buffer_end_slot_index = state.command_buffer_end_slot_index.value()};
+        submitted_submit_info.command_buffers.emplace_back(submitted_command_buffer);
+
+        // Remove the slots from the state now, such that `OnCaptureFinished` wont reset the slots
+        // twice. Note, that they will be reset in `CompleteSubmits`.
+        state.command_buffer_begin_slot_index.reset();
+        state.command_buffer_end_slot_index.reset();
       }
     }
 
@@ -393,67 +403,12 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
           capture_event.mutable_gpu_queue_submission();
       WriteMetaInfo(completed_submission.meta_information, submission_proto->mutable_meta_info());
 
-      // Now for the command buffer timings:
-      for (const auto& completed_submit : completed_submission.submit_infos) {
-        orbit_grpc_protos::GpuSubmitInfo* submit_info_proto = submission_proto->add_submit_infos();
-        for (const auto& completed_command_buffer : completed_submit.command_buffers) {
-          orbit_grpc_protos::GpuCommandBuffer* command_buffer_proto =
-              submit_info_proto->add_command_buffers();
-
-          if (completed_command_buffer.command_buffer_begin_slot_index.has_value()) {
-            uint32_t slot_index = completed_command_buffer.command_buffer_begin_slot_index.value();
-            uint64_t begin_timestamp =
-                QueryGpuTimestampNs(device, query_pool, slot_index, timestamp_period);
-            command_buffer_proto->set_begin_gpu_timestamp_ns(begin_timestamp);
-
-            query_slots_to_reset.push_back(slot_index);
-          }
-
-          uint64_t end_timestamp = QueryGpuTimestampNs(
-              device, query_pool, completed_command_buffer.command_buffer_end_slot_index,
-              timestamp_period);
-
-          command_buffer_proto->set_end_gpu_timestamp_ns(end_timestamp);
-          query_slots_to_reset.push_back(completed_command_buffer.command_buffer_end_slot_index);
-        }
-      }
+      WriteCommandBufferTimings(completed_submission, submission_proto, query_slots_to_reset,
+                                device, query_pool, timestamp_period);
 
       // Now for the debug markers:
-      submission_proto->set_num_begin_markers(completed_submission.num_begin_markers);
-      for (const auto& marker_state : completed_submission.completed_markers) {
-        uint64_t end_timestamp = QueryGpuTimestampNs(
-            device, query_pool, marker_state.end_info->slot_index, timestamp_period);
-        query_slots_to_reset.push_back(marker_state.end_info->slot_index);
-
-        orbit_grpc_protos::GpuDebugMarker* marker_proto = submission_proto->add_completed_markers();
-        marker_proto->set_text_key(
-            (*vulkan_layer_producer_)->InternStringIfNecessaryAndGetKey(marker_state.text));
-        if (marker_state.color.red != 0.0f || marker_state.color.green != 0.0f ||
-            marker_state.color.blue != 0.0f || marker_state.color.alpha != 0.0f) {
-          auto color = marker_proto->mutable_color();
-          color->set_red(marker_state.color.red);
-          color->set_green(marker_state.color.green);
-          color->set_blue(marker_state.color.blue);
-          color->set_alpha(marker_state.color.alpha);
-        }
-        marker_proto->set_depth(marker_state.depth);
-        marker_proto->set_end_gpu_timestamp_ns(end_timestamp);
-
-        // If we haven't captured the begin marker, we'll leave the optional begin_marker empty.
-        if (!marker_state.begin_info.has_value()) {
-          continue;
-        }
-        orbit_grpc_protos::GpuDebugMarkerBeginInfo* begin_debug_marker_proto =
-            marker_proto->mutable_begin_marker();
-        WriteMetaInfo(marker_state.begin_info->meta_information,
-                      begin_debug_marker_proto->mutable_meta_info());
-
-        uint64_t begin_timestamp = QueryGpuTimestampNs(
-            device, query_pool, marker_state.begin_info->slot_index, timestamp_period);
-        query_slots_to_reset.push_back(marker_state.begin_info->slot_index);
-
-        begin_debug_marker_proto->set_gpu_timestamp_ns(begin_timestamp);
-      }
+      WriteDebugMarkers(completed_submission, submission_proto, query_slots_to_reset, device,
+                        query_pool, timestamp_period);
 
       (*vulkan_layer_producer_)->EnqueueCaptureEvent(std::move(capture_event));
     }
@@ -660,6 +615,76 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
     target_proto->set_tid(meta_info.thread_id);
     target_proto->set_pre_submission_cpu_timestamp(meta_info.pre_submission_cpu_timestamp);
     target_proto->set_post_submission_cpu_timestamp(meta_info.post_submission_cpu_timestamp);
+  }
+
+  void WriteCommandBufferTimings(const internal::QueueSubmission& completed_submission,
+                                 orbit_grpc_protos::GpuQueueSubmission* submission_proto,
+                                 std::vector<uint32_t>& query_slots_to_reset, VkDevice device,
+                                 VkQueryPool query_pool, float timestamp_period) {
+    for (const auto& completed_submit : completed_submission.submit_infos) {
+      orbit_grpc_protos::GpuSubmitInfo* submit_info_proto = submission_proto->add_submit_infos();
+      for (const auto& completed_command_buffer : completed_submit.command_buffers) {
+        orbit_grpc_protos::GpuCommandBuffer* command_buffer_proto =
+            submit_info_proto->add_command_buffers();
+
+        if (completed_command_buffer.command_buffer_begin_slot_index.has_value()) {
+          uint32_t slot_index = completed_command_buffer.command_buffer_begin_slot_index.value();
+          uint64_t begin_timestamp =
+              QueryGpuTimestampNs(device, query_pool, slot_index, timestamp_period);
+          command_buffer_proto->set_begin_gpu_timestamp_ns(begin_timestamp);
+
+          query_slots_to_reset.push_back(slot_index);
+        }
+
+        uint32_t slot_index = completed_command_buffer.command_buffer_end_slot_index;
+        uint64_t end_timestamp =
+            QueryGpuTimestampNs(device, query_pool, slot_index, timestamp_period);
+
+        command_buffer_proto->set_end_gpu_timestamp_ns(end_timestamp);
+        query_slots_to_reset.push_back(slot_index);
+      }
+    }
+  }
+
+  void WriteDebugMarkers(const internal::QueueSubmission& completed_submission,
+                         orbit_grpc_protos::GpuQueueSubmission* submission_proto,
+                         std::vector<uint32_t>& query_slots_to_reset, VkDevice device,
+                         VkQueryPool query_pool, const float timestamp_period) {
+    submission_proto->set_num_begin_markers(completed_submission.num_begin_markers);
+    for (const auto& marker_state : completed_submission.completed_markers) {
+      uint64_t end_timestamp = QueryGpuTimestampNs(
+          device, query_pool, marker_state.end_info->slot_index, timestamp_period);
+      query_slots_to_reset.push_back(marker_state.end_info->slot_index);
+
+      orbit_grpc_protos::GpuDebugMarker* marker_proto = submission_proto->add_completed_markers();
+      marker_proto->set_text_key(
+          (*vulkan_layer_producer_)->InternStringIfNecessaryAndGetKey(marker_state.text));
+      if (marker_state.color.red != 0.0f || marker_state.color.green != 0.0f ||
+          marker_state.color.blue != 0.0f || marker_state.color.alpha != 0.0f) {
+        auto color = marker_proto->mutable_color();
+        color->set_red(marker_state.color.red);
+        color->set_green(marker_state.color.green);
+        color->set_blue(marker_state.color.blue);
+        color->set_alpha(marker_state.color.alpha);
+      }
+      marker_proto->set_depth(marker_state.depth);
+      marker_proto->set_end_gpu_timestamp_ns(end_timestamp);
+
+      // If we haven't captured the begin marker, we'll leave the optional begin_marker empty.
+      if (!marker_state.begin_info.has_value()) {
+        continue;
+      }
+      orbit_grpc_protos::GpuDebugMarkerBeginInfo* begin_debug_marker_proto =
+          marker_proto->mutable_begin_marker();
+      WriteMetaInfo(marker_state.begin_info->meta_information,
+                    begin_debug_marker_proto->mutable_meta_info());
+
+      uint64_t begin_timestamp = QueryGpuTimestampNs(
+          device, query_pool, marker_state.begin_info->slot_index, timestamp_period);
+      query_slots_to_reset.push_back(marker_state.begin_info->slot_index);
+
+      begin_debug_marker_proto->set_gpu_timestamp_ns(begin_timestamp);
+    }
   }
 
   // We use 0 to disable filtering of markers.
