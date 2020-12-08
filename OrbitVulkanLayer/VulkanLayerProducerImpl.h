@@ -24,8 +24,9 @@ class VulkanLayerProducerImpl : public VulkanLayerProducer {
 
   [[nodiscard]] bool IsCapturing() override { return lock_free_producer_.IsCapturing(); }
 
-  void EnqueueCaptureEvent(orbit_grpc_protos::CaptureEvent&& capture_event) override {
-    lock_free_producer_.EnqueueIntermediateEvent(std::move(capture_event));
+  bool EnqueueCaptureEvent(orbit_grpc_protos::CaptureEvent&& capture_event) override {
+    return lock_free_producer_.EnqueueIntermediateEventIfCapturing(
+        [&capture_event] { return capture_event; });
   }
 
   [[nodiscard]] uint64_t InternStringIfNecessaryAndGetKey(std::string str) override;
@@ -44,10 +45,6 @@ class VulkanLayerProducerImpl : public VulkanLayerProducer {
       if (outer_->listener_ != nullptr) {
         outer_->listener_->OnCaptureStart();
       }
-
-      // Call ClearStringInternPool also in OnCaptureStart in case
-      // some strings have been interned after OnCaptureFinished.
-      outer_->ClearStringInternPool();
     }
 
     void OnCaptureStop() override {
@@ -64,11 +61,6 @@ class VulkanLayerProducerImpl : public VulkanLayerProducer {
       }
 
       outer_->ClearStringInternPool();
-      // Note that, currently, EnqueueCaptureEvent and InternStringIfNecessaryAndGetKey
-      // (which also calls EnqueueCaptureEvent) can still be called after OnCaptureFinished,
-      // because SubmissionTracker::CompleteSubmits (which is called on vkQueuePresentKHR)
-      // tries to send all submissions and debug markers of a frame that started while capturing,
-      // even if the capture was stopped in the middle of that frame.
     }
 
     orbit_grpc_protos::CaptureEvent TranslateIntermediateEvent(

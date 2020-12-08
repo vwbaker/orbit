@@ -14,13 +14,17 @@ uint64_t VulkanLayerProducerImpl::InternStringIfNecessaryAndGetKey(std::string s
     if (!inserted) {
       return key;
     }
-  }
 
-  orbit_grpc_protos::CaptureEvent event;
-  event.mutable_interned_string()->set_key(key);
-  event.mutable_interned_string()->set_intern(std::move(str));
-  EnqueueCaptureEvent(std::move(event));
-  return key;
+    orbit_grpc_protos::CaptureEvent event;
+    event.mutable_interned_string()->set_key(key);
+    event.mutable_interned_string()->set_intern(std::move(str));
+    if (!EnqueueCaptureEvent(std::move(event))) {
+      // If the interned string wasn't actually sent because we are no longer capturing,
+      // remove it from string_keys_sent_.
+      string_keys_sent_.erase(key);
+    }
+    return key;
+  }
 }
 
 }  // namespace orbit_vulkan_layer

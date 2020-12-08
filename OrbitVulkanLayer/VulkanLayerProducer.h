@@ -29,7 +29,7 @@ class VulkanLayerProducer {
   [[nodiscard]] virtual bool IsCapturing() = 0;
 
   // Use this method to enqueue a CaptureEvent to be sent to OrbitService.
-  virtual void EnqueueCaptureEvent(orbit_grpc_protos::CaptureEvent&& capture_event) = 0;
+  virtual bool EnqueueCaptureEvent(orbit_grpc_protos::CaptureEvent&& capture_event) = 0;
 
   // This method enqueues an InternedString to be sent to OrbitService the first time the string
   // passed as argument is seen. In all cases, it returns the key corresponding to the string.

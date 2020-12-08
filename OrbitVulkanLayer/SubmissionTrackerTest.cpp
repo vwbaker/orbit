@@ -44,7 +44,7 @@ class MockVulkanLayerProducer : public VulkanLayerProducer {
  public:
   MOCK_METHOD(bool, IsCapturing, (), (override));
   MOCK_METHOD(uint64_t, InternStringIfNecessaryAndGetKey, (std::string), (override));
-  MOCK_METHOD(void, EnqueueCaptureEvent, (orbit_grpc_protos::CaptureEvent && capture_event),
+  MOCK_METHOD(bool, EnqueueCaptureEvent, (orbit_grpc_protos::CaptureEvent && capture_event),
               (override));
 
   MOCK_METHOD(void, BringUp, (const std::shared_ptr<grpc::Channel>& channel), (override));
@@ -469,6 +469,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveCommandBufferTimestampsForACompleteSubm
   auto mock_enqueue_capture_event =
       [&actual_capture_event](orbit_grpc_protos::CaptureEvent&& capture_event) {
         actual_capture_event = std::move(capture_event);
+        return true;
       };
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
 
@@ -501,6 +502,7 @@ TEST_F(SubmissionTrackerTest,
   auto mock_enqueue_capture_event =
       [&actual_capture_event](orbit_grpc_protos::CaptureEvent&& capture_event) {
         actual_capture_event = std::move(capture_event);
+        return true;
       };
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
 
@@ -553,6 +555,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveCommandBufferTimestampsWhenNotCapturing
   auto mock_enqueue_capture_event =
       [&actual_capture_event](orbit_grpc_protos::CaptureEvent&& capture_event) {
         actual_capture_event = std::move(capture_event);
+        return true;
       };
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
 
@@ -584,6 +587,7 @@ TEST_F(SubmissionTrackerTest, StopCaptureWhileSubmissionWillStillYieldResults) {
   auto mock_enqueue_capture_event =
       [&actual_capture_event](orbit_grpc_protos::CaptureEvent&& capture_event) {
         actual_capture_event = std::move(capture_event);
+        return true;
       };
   EXPECT_CALL(*producer, EnqueueCaptureEvent).Times(1).WillOnce(Invoke(mock_enqueue_capture_event));
 
@@ -773,6 +777,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerTimestampsForACompleteSubmis
   auto mock_enqueue_capture_event =
       [&actual_capture_event](orbit_grpc_protos::CaptureEvent&& capture_event) {
         actual_capture_event = std::move(capture_event);
+        return true;
       };
 
   const char* text = "Text";
@@ -828,6 +833,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerEndEvenWhenNotCapturedBegin)
   auto mock_enqueue_capture_event =
       [&actual_capture_event](orbit_grpc_protos::CaptureEvent&& capture_event) {
         actual_capture_event = std::move(capture_event);
+        return true;
       };
 
   const char* text = "Text";
@@ -878,6 +884,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveNextedDebugMarkerTimestampsForAComplete
   auto mock_enqueue_capture_event =
       [&actual_capture_event](orbit_grpc_protos::CaptureEvent&& capture_event) {
         actual_capture_event = std::move(capture_event);
+        return true;
       };
 
   const std::string text_outer = "Outer";
@@ -950,6 +957,7 @@ TEST_F(SubmissionTrackerTest,
   auto mock_enqueue_capture_event =
       [&actual_capture_event](orbit_grpc_protos::CaptureEvent&& capture_event) {
         actual_capture_event = std::move(capture_event);
+        return true;
       };
 
   const std::string text_outer = "Outer";
@@ -1024,6 +1032,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissions) {
   auto mock_enqueue_capture_event =
       [&actual_capture_events](orbit_grpc_protos::CaptureEvent&& capture_event) {
         actual_capture_events.emplace_back(std::move(capture_event));
+        return true;
       };
 
   const char* text = "Text";
@@ -1104,6 +1113,7 @@ TEST_F(SubmissionTrackerTest, CanRetrieveDebugMarkerAcrossTwoSubmissionsEvenWhen
   auto mock_enqueue_capture_event =
       [&actual_capture_events](orbit_grpc_protos::CaptureEvent&& capture_event) {
         actual_capture_events.emplace_back(std::move(capture_event));
+        return true;
       };
 
   const char* text = "Text";
@@ -1178,6 +1188,7 @@ TEST_F(SubmissionTrackerTest, ResetSlotsOnDebugMarkerAcrossTwoSubmissionsWhenNot
   auto mock_enqueue_capture_event =
       [&actual_capture_event](orbit_grpc_protos::CaptureEvent&& capture_event) {
         actual_capture_event = std::move(capture_event);
+        return true;
       };
 
   const char* text = "Text";
@@ -1254,6 +1265,7 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBuffer) {
   auto mock_enqueue_capture_event =
       [&actual_capture_event](orbit_grpc_protos::CaptureEvent&& capture_event) {
         actual_capture_event = std::move(capture_event);
+        return true;
       };
 
   const std::string text_outer = "Outer";
@@ -1324,6 +1336,7 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBufferAcro
   auto mock_enqueue_capture_event =
       [&actual_capture_events](orbit_grpc_protos::CaptureEvent&& capture_event) {
         actual_capture_events.emplace_back(std::move(capture_event));
+        return true;
       };
 
   const std::string text_outer = "Outer";
