@@ -111,6 +111,7 @@ class SubmissionTrackerTest : public ::testing::Test {
   static constexpr uint32_t kSlotIndex4 = 35;
   static constexpr uint32_t kSlotIndex5 = 36;
   static constexpr uint32_t kSlotIndex6 = 37;
+  static constexpr uint32_t kSlotIndex7 = 38;
 
   const std::function<bool(VkDevice, uint32_t*)> mock_next_ready_query_slot_function_1 =
       [](VkDevice /*device*/, uint32_t* allocated_slot) -> bool {
@@ -135,14 +136,22 @@ class SubmissionTrackerTest : public ::testing::Test {
     *allocated_slot = kSlotIndex4;
     return true;
   };
+
   const std::function<bool(VkDevice, uint32_t*)> mock_next_ready_query_slot_function_5 =
       [](VkDevice /*device*/, uint32_t* allocated_slot) -> bool {
     *allocated_slot = kSlotIndex5;
     return true;
   };
+
   const std::function<bool(VkDevice, uint32_t*)> mock_next_ready_query_slot_function_6 =
       [](VkDevice /*device*/, uint32_t* allocated_slot) -> bool {
     *allocated_slot = kSlotIndex6;
+    return true;
+  };
+
+  const std::function<bool(VkDevice, uint32_t*)> mock_next_ready_query_slot_function_7 =
+      [](VkDevice /*device*/, uint32_t* allocated_slot) -> bool {
+    *allocated_slot = kSlotIndex7;
     return true;
   };
 
@@ -152,6 +161,7 @@ class SubmissionTrackerTest : public ::testing::Test {
   static constexpr uint64_t kTimestamp4 = 14;
   static constexpr uint64_t kTimestamp5 = 15;
   static constexpr uint64_t kTimestamp6 = 16;
+  static constexpr uint64_t kTimestamp7 = 17;
 
   const PFN_vkGetQueryPoolResults mock_get_query_pool_results_function_all_ready =
       +[](VkDevice /*device*/, VkQueryPool /*queryPool*/, uint32_t first_query,
@@ -177,6 +187,9 @@ class SubmissionTrackerTest : public ::testing::Test {
         break;
       case kSlotIndex6:
         *absl::bit_cast<uint64_t*>(data) = kTimestamp6;
+        break;
+      case kSlotIndex7:
+        *absl::bit_cast<uint64_t*>(data) = kTimestamp7;
         break;
       default:
         UNREACHABLE();
@@ -253,6 +266,7 @@ class SubmissionTrackerTest : public ::testing::Test {
         .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
         .WillOnce(Invoke(mock_next_ready_query_slot_function_2));
   }
+
   void EXPECT_THREE_NEXT_READY_QUERY_SLOT_CALLS() {
     EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
         .Times(3)
@@ -260,6 +274,7 @@ class SubmissionTrackerTest : public ::testing::Test {
         .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
         .WillOnce(Invoke(mock_next_ready_query_slot_function_3));
   }
+
   void EXPECT_FOUR_NEXT_READY_QUERY_SLOT_CALLS() {
     EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
         .Times(4)
@@ -268,6 +283,7 @@ class SubmissionTrackerTest : public ::testing::Test {
         .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
         .WillOnce(Invoke(mock_next_ready_query_slot_function_4));
   }
+
   void EXPECT_SIX_NEXT_READY_QUERY_SLOT_CALLS() {
     EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
         .Times(6)
@@ -277,6 +293,18 @@ class SubmissionTrackerTest : public ::testing::Test {
         .WillOnce(Invoke(mock_next_ready_query_slot_function_4))
         .WillOnce(Invoke(mock_next_ready_query_slot_function_5))
         .WillOnce(Invoke(mock_next_ready_query_slot_function_6));
+  }
+
+  void EXPECT_SEVEN_NEXT_READY_QUERY_SLOT_CALLS() {
+    EXPECT_CALL(timer_query_pool, NextReadyQuerySlot)
+        .Times(7)
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_1))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_2))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_3))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_4))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_5))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_6))
+        .WillOnce(Invoke(mock_next_ready_query_slot_function_7));
   }
 };
 
@@ -1256,15 +1284,19 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBufferAcro
       SubmissionTracker<MockDispatchTable, MockDeviceManager, MockTimerQueryPool>(
           1, &dispatch_table, &timer_query_pool, &device_manager,
           absl::bit_cast<std::unique_ptr<VulkanLayerProducer>*>(&producer));
-  EXPECT_SIX_NEXT_READY_QUERY_SLOT_CALLS();
+  EXPECT_SEVEN_NEXT_READY_QUERY_SLOT_CALLS();
   EXPECT_CALL(dispatch_table, GetQueryPoolResults)
       .WillRepeatedly(Return(mock_get_query_pool_results_function_all_ready));
-  std::vector<uint32_t> actual_reset_slots_1;
+
+  std::vector<uint32_t> actual_reset_slots;
+  auto mock_reset_query_slots = [&actual_reset_slots](VkDevice /*device*/,
+                                                      const std::vector<uint32_t> slots_to_reset) {
+    actual_reset_slots.insert(actual_reset_slots.end(), slots_to_reset.begin(),
+                              slots_to_reset.end());
+  };
   std::vector<uint32_t> actual_reset_slots_2;
-  EXPECT_CALL(timer_query_pool, ResetQuerySlots)
-      .Times(2)
-      .WillOnce(SaveArg<1>(&actual_reset_slots_1))
-      .WillOnce(SaveArg<1>(&actual_reset_slots_2));
+  EXPECT_CALL(timer_query_pool, ResetQuerySlots).WillRepeatedly(Invoke(mock_reset_query_slots));
+
   std::vector<orbit_grpc_protos::CaptureEvent> actual_capture_events;
   auto mock_enqueue_capture_event =
       [&actual_capture_events](orbit_grpc_protos::CaptureEvent&& capture_event) {
@@ -1291,10 +1323,10 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBufferAcro
 
   producer->StartCapture(&tracker);
   tracker.TrackCommandBuffers(device, command_pool, &command_buffer, 1);
-  tracker.MarkCommandBufferBegin(command_buffer);
-  tracker.MarkDebugMarkerBegin(command_buffer, text_outer.c_str(), expected_color);
-  tracker.MarkDebugMarkerBegin(command_buffer, text_inner.c_str(), expected_color);
-  tracker.MarkCommandBufferEnd(command_buffer);
+  tracker.MarkCommandBufferBegin(command_buffer);                                    // timestamp 1
+  tracker.MarkDebugMarkerBegin(command_buffer, text_outer.c_str(), expected_color);  // timestamp 2
+  tracker.MarkDebugMarkerBegin(command_buffer, text_inner.c_str(), expected_color);  // cut-off
+  tracker.MarkCommandBufferEnd(command_buffer);                                      // timestamp 3
   uint64_t pre_submit_time_1 = MonotonicTimestampNs();
   std::optional<internal::QueueSubmission> queue_submission_optional_1 =
       tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
@@ -1303,17 +1335,18 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBufferAcro
   tracker.CompleteSubmits(device);
 
   tracker.ResetCommandBuffer(command_buffer);
-  tracker.MarkCommandBufferBegin(command_buffer);
-  tracker.MarkDebugMarkerEnd(command_buffer);
-  tracker.MarkCommandBufferEnd(command_buffer);
+  tracker.MarkCommandBufferBegin(command_buffer);  // timestamp 4
+  tracker.MarkDebugMarkerEnd(command_buffer);      // timestamp 5 - we can't know now to cut-off
+  tracker.MarkDebugMarkerEnd(command_buffer);      // timestamp 6
+  tracker.MarkCommandBufferEnd(command_buffer);    // timestamp 7
   std::optional<internal::QueueSubmission> queue_submission_optional_2 =
       tracker.PersistCommandBuffersOnSubmit(1, &submit_info);
   tracker.PersistDebugMarkersOnSubmit(queue, 1, &submit_info, queue_submission_optional_2);
   tracker.CompleteSubmits(device);
 
-  EXPECT_THAT(actual_reset_slots_1, UnorderedElementsAre(kSlotIndex1, kSlotIndex3));
-  EXPECT_THAT(actual_reset_slots_2,
-              UnorderedElementsAre(kSlotIndex2, kSlotIndex4, kSlotIndex5, kSlotIndex6));
+  EXPECT_THAT(actual_reset_slots,
+              UnorderedElementsAre(kSlotIndex1, kSlotIndex2, kSlotIndex3, kSlotIndex4, kSlotIndex5,
+                                   kSlotIndex6, kSlotIndex7));
   ASSERT_EQ(actual_capture_events.size(), 2);
 
   const orbit_grpc_protos::CaptureEvent& actual_capture_event_1 = actual_capture_events.at(0);
@@ -1332,7 +1365,7 @@ TEST_F(SubmissionTrackerTest, CanLimitNextedDebugMarkerDepthPerCommandBufferAcro
   const orbit_grpc_protos::GpuDebugMarker& actual_debug_marker =
       actual_queue_submission_2.completed_markers(0);
 
-  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker, kTimestamp5, expected_outer_text_key,
+  EXPECT_DEBUG_MARKER_END_EQ(actual_debug_marker, kTimestamp6, expected_outer_text_key,
                              expected_color, 0);
   EXPECT_DEBUG_MARKER_BEGIN_EQ(actual_debug_marker, kTimestamp2, pre_submit_time_1,
                                post_submit_time_1, tid);

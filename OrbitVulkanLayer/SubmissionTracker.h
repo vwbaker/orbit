@@ -347,12 +347,18 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
               internal::MarkerState marker_state = markers.marker_stack.top();
               markers.marker_stack.pop();
 
-              // If there is a begin marker slot from a previous submission or one that was cut off,
-              // this is our chance to reset the slot.
-              if (marker_state.begin_info.has_value() &&
-                  (!queue_submission_optional.has_value() || marker_state.cut_off)) {
+              // If there is a begin marker slot from a previous submission, this is our chance to
+              // reset the slot.
+              if (marker_state.begin_info.has_value() && !queue_submission_optional.has_value()) {
                 begin_markers_from_prev_submit_to_reset.push_back(
                     marker_state.begin_info.value().slot_index);
+              }
+
+              // If the begin marker was cut off, but the end marker was not (in a different
+              // submission)
+              if (marker_state.cut_off && marker.slot_index.has_value()) {
+                begin_markers_from_prev_submit_to_reset.push_back(marker.slot_index.value());
+                break;
               }
 
               if (queue_submission_optional.has_value() && marker.slot_index.has_value() &&
@@ -369,10 +375,11 @@ class SubmissionTracker : public VulkanLayerProducer::CaptureStatusListener {
       }
     }
 
+    if (!begin_markers_from_prev_submit_to_reset.empty()) {
+      timer_query_pool_->ResetQuerySlots(device, begin_markers_from_prev_submit_to_reset);
+    }
+
     if (!queue_submission_optional.has_value()) {
-      if (!begin_markers_from_prev_submit_to_reset.empty()) {
-        timer_query_pool_->ResetQuerySlots(device, begin_markers_from_prev_submit_to_reset);
-      }
       return;
     }
 
