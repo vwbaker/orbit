@@ -2,7 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "LayerLogic.h"
+#include "DeviceManager.h"
+#include "DispatchTable.h"
+#include "QueueManager.h"
+#include "SubmissionTracker.h"
+#include "TimerQueryPool.h"
+#include "VulkanLayerController.h"
 #include "absl/base/casts.h"
 #include "vulkan/vk_layer.h"
 #include "vulkan/vulkan.h"
@@ -59,7 +64,14 @@ static const std::array<VkExtensionProperties, 3> device_extensions = {
                           .specVersion = VK_EXT_DEBUG_UTILS_SPEC_VERSION},
     VkExtensionProperties{.extensionName = VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME,
                           .specVersion = VK_EXT_HOST_QUERY_RESET_SPEC_VERSION}};
-static LayerLogic logic_;
+
+using DeviceMangerImpl = DeviceManager<DispatchTable>;
+using TimerQueryPoolImpl = TimerQueryPool<DispatchTable>;
+using SubmissionTrackerImpl =
+    SubmissionTracker<DispatchTable, DeviceMangerImpl, TimerQueryPoolImpl>;
+static VulkanLayerController<DispatchTable, QueueManager, DeviceMangerImpl, TimerQueryPoolImpl,
+                             SubmissionTrackerImpl>
+    logic_;
 
 // ----------------------------------------------------------------------------
 // Layer bootstrapping code
@@ -68,29 +80,26 @@ static LayerLogic logic_;
 VKAPI_ATTR VkResult VKAPI_CALL OrbitCreateInstance(const VkInstanceCreateInfo* create_info,
                                                    const VkAllocationCallbacks* allocator,
                                                    VkInstance* instance) {
-  VkResult result = logic_.PreCallAndCallCreateInstance(create_info, allocator, instance);
-  logic_.PostCallCreateInstance(create_info, allocator, instance);
+  VkResult result = logic_.OnCreateInstance(create_info, allocator, instance);
   return result;
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitDestroyInstance(VkInstance instance,
                                                 const VkAllocationCallbacks* allocator) {
-  logic_.CallAndPostDestroyInstance(instance, allocator);
+  logic_.OnDestroyInstance(instance, allocator);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitCreateDevice(VkPhysicalDevice physical_device,
                                                  const VkDeviceCreateInfo* create_info,
                                                  const VkAllocationCallbacks* allocator,
                                                  VkDevice* device) {
-  VkResult result =
-      logic_.PreCallAndCallCreateDevice(physical_device, create_info, allocator, device);
-  logic_.PostCallCreateDevice(physical_device, create_info, allocator, device);
+  VkResult result = logic_.OnCreateDevice(physical_device, create_info, allocator, device);
   return result;
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitDestroyDevice(VkDevice device,
                                               const VkAllocationCallbacks* allocator) {
-  logic_.CallAndPostDestroyDevice(device, allocator);
+  logic_.OnDestroyDevice(device, allocator);
 }
 
 // ----------------------------------------------------------------------------
@@ -99,155 +108,72 @@ VKAPI_ATTR void VKAPI_CALL OrbitDestroyDevice(VkDevice device,
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitResetCommandPool(VkDevice device, VkCommandPool command_pool,
                                                      VkCommandPoolResetFlags flags) {
-  try {
-    VkResult result = logic_.CallResetCommandPool(device, command_pool, flags);
-    logic_.PostCallResetCommandPool(device, command_pool, flags);
-    return result;
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  return logic_.OnResetCommandPool(device, command_pool, flags);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
 OrbitAllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo* allocate_info,
                             VkCommandBuffer* command_buffers) {
-  try {
-    VkResult result = logic_.CallAllocateCommandBuffers(device, allocate_info, command_buffers);
-    logic_.PostCallAllocateCommandBuffers(device, allocate_info, command_buffers);
-    return result;
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  return logic_.OnAllocateCommandBuffers(device, allocate_info, command_buffers);
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitFreeCommandBuffers(VkDevice device, VkCommandPool command_pool,
                                                    uint32_t command_buffer_count,
                                                    const VkCommandBuffer* command_buffers) {
-  try {
-    logic_.CallFreeCommandBuffers(device, command_pool, command_buffer_count, command_buffers);
-    logic_.PostCallFreeCommandBuffers(device, command_pool, command_buffer_count, command_buffers);
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  logic_.OnFreeCommandBuffers(device, command_pool, command_buffer_count, command_buffers);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitBeginCommandBuffer(VkCommandBuffer command_buffer,
                                                        const VkCommandBufferBeginInfo* begin_info) {
-  try {
-    VkResult result = logic_.CallBeginCommandBuffer(command_buffer, begin_info);
-    logic_.PostCallBeginCommandBuffer(command_buffer, begin_info);
-
-    return result;
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  return logic_.OnBeginCommandBuffer(command_buffer, begin_info);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitEndCommandBuffer(VkCommandBuffer command_buffer) {
-  try {
-    logic_.PreCallEndCommandBuffer(command_buffer);
-    VkResult result = logic_.CallEndCommandBuffer(command_buffer);
-    return result;
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  return logic_.OnEndCommandBuffer(command_buffer);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitResetCommandBuffer(VkCommandBuffer command_buffer,
                                                        VkCommandBufferResetFlags flags) {
-  try {
-    logic_.PreCallResetCommandBuffer(command_buffer, flags);
-    VkResult result = logic_.CallResetCommandBuffer(command_buffer, flags);
-
-    return result;
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  return logic_.OnResetCommandBuffer(command_buffer, flags);
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitGetDeviceQueue(VkDevice device, uint32_t queue_family_index,
                                                uint32_t queue_index, VkQueue* pQueue) {
-  try {
-    logic_.CallGetDeviceQueue(device, queue_family_index, queue_index, pQueue);
-    logic_.PostCallGetDeviceQueue(device, queue_family_index, queue_index, pQueue);
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  logic_.OnGetDeviceQueue(device, queue_family_index, queue_index, pQueue);
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitGetDeviceQueue2(VkDevice device,
                                                 const VkDeviceQueueInfo2* queue_info,
                                                 VkQueue* queue) {
-  try {
-    logic_.CallGetDeviceQueue2(device, queue_info, queue);
-    logic_.PostCallGetDeviceQueue2(device, queue_info, queue);
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  logic_.OnGetDeviceQueue2(device, queue_info, queue);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitQueueSubmit(VkQueue queue, uint32_t submit_count,
                                                 const VkSubmitInfo* submits, VkFence fence) {
-  try {
-    std::optional<SubmissionTracker<DispatchTable, DeviceManager<DispatchTable>,
-                                    TimerQueryPool<DispatchTable>>::QueueSubmission>
-        queue_submission_optional = logic_.PreCallQueueSubmit(queue, submit_count, submits, fence);
-    VkResult result = logic_.CallQueueSubmit(queue, submit_count, submits, fence);
-    CHECK(result == VK_SUCCESS);
-    logic_.PostCallQueueSubmit(queue, submit_count, submits, fence, queue_submission_optional);
-    return result;
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  return logic_.OnQueueSubmit(queue, submit_count, submits, fence);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL OrbitQueuePresentKHR(VkQueue queue,
                                                     const VkPresentInfoKHR* present_info) {
-  try {
-    VkResult result = logic_.CallQueuePresentKHR(queue, present_info);
-    logic_.PostCallQueuePresentKHR(queue, present_info);
-    return result;
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  return logic_.OnQueuePresentKHR(queue, present_info);
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitCmdBeginDebugUtilsLabelEXT(VkCommandBuffer command_buffer,
                                                            const VkDebugUtilsLabelEXT* label_info) {
-  try {
-    logic_.CallCmdBeginDebugUtilsLabelEXT(command_buffer, label_info);
-    logic_.PostCallCmdBeginDebugUtilsLabelEXT(command_buffer, label_info);
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  logic_.OnCmdBeginDebugUtilsLabelEXT(command_buffer, label_info);
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitCmdEndDebugUtilsLabelEXT(VkCommandBuffer command_buffer) {
-  try {
-    logic_.PreCallCmdEndDebugUtilsLabelEXT(command_buffer);
-    logic_.CallCmdEndDebugUtilsLabelEXT(command_buffer);
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  logic_.OnCmdEndDebugUtilsLabelEXT(command_buffer);
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitCmdDebugMarkerBeginEXT(
     VkCommandBuffer command_buffer, const VkDebugMarkerMarkerInfoEXT* marker_info) {
-  try {
-    logic_.CallCmdDebugMarkerBeginEXT(command_buffer, marker_info);
-    logic_.PostCallCmdDebugMarkerBeginEXT(command_buffer, marker_info);
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  logic_.OnCmdDebugMarkerBeginEXT(command_buffer, marker_info);
 }
 
 VKAPI_ATTR void VKAPI_CALL OrbitCmdDebugMarkerEndEXT(VkCommandBuffer command_buffer) {
-  try {
-    logic_.PreCallCmdDebugMarkerEndEXT(command_buffer);
-    logic_.CallCmdDebugMarkerEndEXT(command_buffer);
-  } catch (const std::exception& e) {
-    CHECK(false);
-  }
+  logic_.OnCmdDebugMarkerEndEXT(command_buffer);
 }
 
 // ----------------------------------------------------------------------------
@@ -323,22 +249,22 @@ VKAPI_ATTR VkResult VKAPI_CALL OrbitEnumerateDeviceExtensionProperties(
 
   // If a different layer is queried exclusively, we forward the call.
   if (layer_name != nullptr) {
-    return logic_.CallEnumerateDeviceExtensionProperties(physical_device, layer_name,
-                                                         property_count, properties);
+    return logic_.OnEnumerateDeviceExtensionProperties(physical_device, layer_name, property_count,
+                                                       properties);
   }
 
   // This is a general query, so we need to append our extensions to the once down in the
   // callchain.
   uint32_t num_other_extensions;
-  VkResult result = logic_.CallEnumerateDeviceExtensionProperties(physical_device, nullptr,
-                                                                  &num_other_extensions, nullptr);
+  VkResult result = logic_.OnEnumerateDeviceExtensionProperties(physical_device, nullptr,
+                                                                &num_other_extensions, nullptr);
   if (result != VK_SUCCESS) {
     return result;
   }
 
   std::vector<VkExtensionProperties> extensions(num_other_extensions);
-  result = logic_.CallEnumerateDeviceExtensionProperties(physical_device, nullptr,
-                                                         &num_other_extensions, extensions.data());
+  result = logic_.OnEnumerateDeviceExtensionProperties(physical_device, nullptr,
+                                                       &num_other_extensions, extensions.data());
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -416,7 +342,7 @@ ORBIT_EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL OrbitGetDeviceProcAddr(VkD
   ORBIT_GETPROCADDR(CmdDebugMarkerBeginEXT)
   ORBIT_GETPROCADDR(CmdDebugMarkerEndEXT)
   LOG("Fallback");
-  return logic_.CallGetDeviceProcAddr(device, name);
+  return logic_.OnGetDeviceProcAddr(device, name);
 }
 
 ORBIT_EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL OrbitGetInstanceProcAddr(VkInstance instance,
@@ -454,7 +380,7 @@ ORBIT_EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL OrbitGetInstanceProcAddr(V
   ORBIT_GETPROCADDR(CmdDebugMarkerBeginEXT)
   ORBIT_GETPROCADDR(CmdDebugMarkerEndEXT)
 
-  return logic_.CallGetInstanceProcAddr(instance, name);
+  return logic_.OnGetInstanceProcAddr(instance, name);
 }
 
 #undef ORBIT_GETPROCADDR

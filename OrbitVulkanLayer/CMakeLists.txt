@@ -18,8 +18,7 @@ target_sources(OrbitVulkanLayer PRIVATE
         DispatchTable.cpp
         DispatchTable.h
         Main.cpp
-        LayerLogic.cpp
-        LayerLogic.h
+        VulkanLayerController.h
         QueueManager.cpp
         QueueManager.h
         SubmissionTracker.h
