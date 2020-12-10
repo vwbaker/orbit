@@ -37,7 +37,8 @@ class LayerLogic {
   LayerLogic()
       : device_manager_(&dispatch_table_),
         timer_query_pool_(&dispatch_table_, kNumTimerQuerySlots),
-        command_buffer_manager_(0, &dispatch_table_, &timer_query_pool_, &device_manager_) {}
+        command_buffer_manager_(&dispatch_table_, &timer_query_pool_, &device_manager_,
+                                std::numeric_limits<uint32_t>::max()) {}
 
   ~LayerLogic() { CloseVulkanLayerProducerIfNecessary(); }
 
@@ -144,16 +145,19 @@ class LayerLogic {
   void PostCallGetDeviceQueue2(VkDevice device, const VkDeviceQueueInfo2* queue_info,
                                VkQueue* queue);
 
-  std::optional<internal::QueueSubmission> PreCallQueueSubmit(VkQueue queue, uint32_t submit_count,
-                                                              const VkSubmitInfo* submits,
-                                                              VkFence fence);
+  std::optional<SubmissionTracker<DispatchTable, DeviceManager<DispatchTable>,
+                                  TimerQueryPool<DispatchTable>>::QueueSubmission>
+  PreCallQueueSubmit(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits,
+                     VkFence fence);
   [[nodiscard]] VkResult CallQueueSubmit(VkQueue queue, uint32_t submit_count,
                                          const VkSubmitInfo* submits, VkFence fence) {
     return dispatch_table_.QueueSubmit(queue)(queue, submit_count, submits, fence);
   }
-  void PostCallQueueSubmit(VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits,
-                           VkFence fence,
-                           std::optional<internal::QueueSubmission> queue_submission_optional);
+  void PostCallQueueSubmit(
+      VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits, VkFence fence,
+      std::optional<SubmissionTracker<DispatchTable, DeviceManager<DispatchTable>,
+                                      TimerQueryPool<DispatchTable>>::QueueSubmission>
+          queue_submission_optional);
 
   [[nodiscard]] VkResult CallQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* present_info) {
     return dispatch_table_.QueuePresentKHR(queue)(queue, present_info);

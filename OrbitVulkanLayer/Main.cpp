@@ -189,8 +189,9 @@ VKAPI_ATTR void VKAPI_CALL OrbitGetDeviceQueue2(VkDevice device,
 VKAPI_ATTR VkResult VKAPI_CALL OrbitQueueSubmit(VkQueue queue, uint32_t submit_count,
                                                 const VkSubmitInfo* submits, VkFence fence) {
   try {
-    std::optional<internal::QueueSubmission> queue_submission_optional =
-        logic_.PreCallQueueSubmit(queue, submit_count, submits, fence);
+    std::optional<SubmissionTracker<DispatchTable, DeviceManager<DispatchTable>,
+                                    TimerQueryPool<DispatchTable>>::QueueSubmission>
+        queue_submission_optional = logic_.PreCallQueueSubmit(queue, submit_count, submits, fence);
     VkResult result = logic_.CallQueueSubmit(queue, submit_count, submits, fence);
     CHECK(result == VK_SUCCESS);
     logic_.PostCallQueueSubmit(queue, submit_count, submits, fence, queue_submission_optional);

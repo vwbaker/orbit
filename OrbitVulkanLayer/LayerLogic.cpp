@@ -122,16 +122,18 @@ void LayerLogic::PreCallResetCommandBuffer(VkCommandBuffer command_buffer,
   command_buffer_manager_.ResetCommandBuffer(command_buffer);
 }
 
-std::optional<internal::QueueSubmission> LayerLogic::PreCallQueueSubmit(VkQueue /*queue*/,
-                                                                        uint32_t submit_count,
-                                                                        const VkSubmitInfo* submits,
-                                                                        VkFence /*fence*/) {
+std::optional<SubmissionTracker<DispatchTable, DeviceManager<DispatchTable>,
+                                TimerQueryPool<DispatchTable>>::QueueSubmission>
+LayerLogic::PreCallQueueSubmit(VkQueue /*queue*/, uint32_t submit_count,
+                               const VkSubmitInfo* submits, VkFence /*fence*/) {
   return command_buffer_manager_.PersistCommandBuffersOnSubmit(submit_count, submits);
 }
 
 void LayerLogic::PostCallQueueSubmit(
     VkQueue queue, uint32_t submit_count, const VkSubmitInfo* submits, VkFence /*fence*/,
-    std::optional<internal::QueueSubmission> queue_submission_optional) {
+    std::optional<SubmissionTracker<DispatchTable, DeviceManager<DispatchTable>,
+                                    TimerQueryPool<DispatchTable>>::QueueSubmission>
+        queue_submission_optional) {
   command_buffer_manager_.PersistDebugMarkersOnSubmit(queue, submit_count, submits,
                                                       queue_submission_optional);
 }
