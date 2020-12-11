@@ -33,6 +33,22 @@ template <class DispatchTable, class QueueManager, class DeviceManager, class Ti
           class SubmissionTracker>
 class VulkanLayerController {
  public:
+  // layer metadata
+  static constexpr const char* const kLayerName = "ORBIT_VK_LAYER";
+  static constexpr const char* const kLayerDescription =
+      "Provides GPU insights for the Orbit Profiler";
+
+  static constexpr const uint32_t kLayerImplVersion = 1;
+  static constexpr const uint32_t kLayerSpecVersion = VK_API_VERSION_1_1;
+
+  static constexpr std::array<VkExtensionProperties, 3> kDeviceExtensions = {
+      VkExtensionProperties{.extensionName = VK_EXT_DEBUG_MARKER_EXTENSION_NAME,
+                            .specVersion = VK_EXT_DEBUG_MARKER_SPEC_VERSION},
+      VkExtensionProperties{.extensionName = VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+                            .specVersion = VK_EXT_DEBUG_UTILS_SPEC_VERSION},
+      VkExtensionProperties{.extensionName = VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME,
+                            .specVersion = VK_EXT_HOST_QUERY_RESET_SPEC_VERSION}};
+
   VulkanLayerController()
       : device_manager_(&dispatch_table_),
         timer_query_pool_(&dispatch_table_, kNumTimerQuerySlots),
@@ -40,6 +56,10 @@ class VulkanLayerController {
                                 std::numeric_limits<uint32_t>::max()) {}
 
   ~VulkanLayerController() { CloseVulkanLayerProducerIfNecessary(); }
+
+  // ----------------------------------------------------------------------------
+  // Layer bootstrapping code
+  // ----------------------------------------------------------------------------
 
   [[nodiscard]] VkResult OnCreateInstance(const VkInstanceCreateInfo* create_info,
                                           const VkAllocationCallbacks* allocator,
@@ -140,13 +160,9 @@ class VulkanLayerController {
     destroy_device_function(device, allocator);
   }
 
-  [[nodiscard]] VkResult OnEnumerateDeviceExtensionProperties(VkPhysicalDevice physical_device,
-                                                              const char* layer_name,
-                                                              uint32_t* property_count,
-                                                              VkExtensionProperties* properties) {
-    return dispatch_table_.EnumerateDeviceExtensionProperties(physical_device)(
-        physical_device, layer_name, property_count, properties);
-  }
+  // ----------------------------------------------------------------------------
+  // Core layer logic
+  // ----------------------------------------------------------------------------
 
   [[nodiscard]] VkResult OnResetCommandPool(VkDevice device, VkCommandPool command_pool,
                                             VkCommandPoolResetFlags flags) {
@@ -264,6 +280,128 @@ class VulkanLayerController {
     if (dispatch_table_.IsDebugMarkerExtensionSupported(command_buffer)) {
       dispatch_table_.CmdDebugMarkerEndEXT(command_buffer)(command_buffer);
     }
+  }
+
+  // ----------------------------------------------------------------------------
+  // Layer enumeration functions
+  // ----------------------------------------------------------------------------
+
+  [[nodiscard]] VkResult OnEnumerateInstanceLayerProperties(uint32_t* property_count,
+                                                            VkLayerProperties* properties) {
+    // Vulkan spec dictates that we are only supposed to enumerate ourselve.
+    if (property_count != nullptr) {
+      *property_count = 1;
+    }
+    if (properties != nullptr) {
+      snprintf(properties->layerName, strlen(kLayerName), kLayerName);
+      snprintf(properties->description, strlen(kLayerDescription), kLayerDescription);
+      properties->implementationVersion = kLayerImplVersion;
+      properties->specVersion = kLayerSpecVersion;
+    }
+
+    return VK_SUCCESS;
+  }
+
+  [[nodiscard]] VkResult OnEnumerateInstanceExtensionProperties(
+      const char* layer_name, uint32_t* property_count, VkExtensionProperties* /*properties*/) {
+    // Inform the client that we have no extension properties if this layer
+    // specifically is being queried.
+    if (layer_name != nullptr && strcmp(layer_name, kLayerName) == 0) {
+      if (property_count != nullptr) {
+        *property_count = 0;
+      }
+      return VK_SUCCESS;
+    }
+
+    CHECK(false);
+
+    // Vulkan spec mandates returning this when this layer isn't being queried.
+    return VK_ERROR_LAYER_NOT_PRESENT;
+  }
+
+  [[nodiscard]] VkResult OnEnumerateDeviceExtensionProperties(VkPhysicalDevice physical_device,
+                                                              const char* layer_name,
+                                                              uint32_t* property_count,
+                                                              VkExtensionProperties* properties) {
+    // If our layer is queried exclusively, we just return our extensions
+    if (layer_name != nullptr && strcmp(layer_name, kLayerName) == 0) {
+      // If properties == nullptr, only the number of extensions are queried.
+      if (properties == nullptr) {
+        *property_count = kDeviceExtensions.size();
+        return VK_SUCCESS;
+      }
+      uint32_t num_extensions_to_copy = kDeviceExtensions.size();
+      // In the case that less extensions are queried then the layer uses, we copy on this number
+      // and return VK_INCOMPLETE, according to the specification.
+      if (*property_count < num_extensions_to_copy) {
+        num_extensions_to_copy = *property_count;
+      }
+      memcpy(properties, kDeviceExtensions.data(),
+             num_extensions_to_copy * sizeof(VkExtensionProperties));
+      *property_count = num_extensions_to_copy;
+
+      if (num_extensions_to_copy < kDeviceExtensions.size()) {
+        return VK_INCOMPLETE;
+      }
+      return VK_SUCCESS;
+    }
+
+    // If a different layer is queried exclusively, we forward the call.
+    if (layer_name != nullptr) {
+      return dispatch_table_.EnumerateDeviceExtensionProperties(physical_device)(
+          physical_device, layer_name, property_count, properties);
+    }
+
+    // This is a general query, so we need to append our extensions to the once down in the
+    // callchain.
+    uint32_t num_other_extensions;
+    VkResult result = dispatch_table_.EnumerateDeviceExtensionProperties(physical_device)(
+        physical_device, nullptr, &num_other_extensions, nullptr);
+    if (result != VK_SUCCESS) {
+      return result;
+    }
+
+    std::vector<VkExtensionProperties> extensions(num_other_extensions);
+    result = dispatch_table_.EnumerateDeviceExtensionProperties(physical_device)(
+        physical_device, nullptr, &num_other_extensions, extensions.data());
+    if (result != VK_SUCCESS) {
+      return result;
+    }
+
+    // Lets append all of our extensions, that are not yet listed.
+    // Note, as this list of our extensions is very small, we are fine with O(N*M) runtime.
+    for (const auto& extension : kDeviceExtensions) {
+      bool is_unique = true;
+      for (const auto& other_extension : extensions) {
+        if (strcmp(extension.extensionName, other_extension.extensionName) == 0) {
+          is_unique = false;
+          break;
+        }
+      }
+      if (is_unique) {
+        extensions.push_back(extension);
+      }
+    }
+
+    // As above, if properties is nullptr, only the number if extensions is queried.
+    if (properties == nullptr) {
+      *property_count = extensions.size();
+      return VK_SUCCESS;
+    }
+
+    uint32_t num_extensions_to_copy = extensions.size();
+    // In the case that less extensions are queried then the layer uses, we copy on this number and
+    // return VK_INCOMPLETE, according to the specification.
+    if (*property_count < num_extensions_to_copy) {
+      num_extensions_to_copy = *property_count;
+    }
+    memcpy(properties, extensions.data(), num_extensions_to_copy * sizeof(VkExtensionProperties));
+    *property_count = num_extensions_to_copy;
+
+    if (num_extensions_to_copy < extensions.size()) {
+      return VK_INCOMPLETE;
+    }
+    return VK_SUCCESS;
   }
 
  private:

@@ -41,7 +41,8 @@ target_sources(OrbitVulkanLayerTests PRIVATE
         DispatchTableTest.cpp
         SubmissionTrackerTest.cpp
         TimerQueryPoolTest.cpp
-        QueueManagerTest.cpp)
+        QueueManagerTest.cpp
+        VulkanLayerControllerTest.cpp)
 
 target_link_libraries(
         OrbitVulkanLayerTests PRIVATE
