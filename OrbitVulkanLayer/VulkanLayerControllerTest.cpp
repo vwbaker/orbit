@@ -23,7 +23,7 @@ class MockDispatchTable {
  public:
   MOCK_METHOD(PFN_vkEnumerateDeviceExtensionProperties, EnumerateDeviceExtensionProperties,
               (VkPhysicalDevice));
-  MOCK_METHOD((void), CreateInstanceDispatchTable, (VkInstance*, PFN_vkGetInstanceProcAddr));
+  MOCK_METHOD((void), CreateInstanceDispatchTable, (VkInstance, PFN_vkGetInstanceProcAddr));
 };
 
 class MockDeviceManager {
@@ -264,10 +264,46 @@ TEST_F(VulkanLayerControllerTest,
 // Layer bootstrapping code
 // ----------------------------------------------------------------------------
 
-TEST_F(VulkanLayerControllerTest, OnCreateInstance) {
+TEST_F(VulkanLayerControllerTest, InitializationFailsOnCreateInstanceWithNoInfo) {
   VkInstance created_instance;
-  VkResult result = controller_.OnCreateInstance(nullptr, nullptr, &created_instance);
+  VkInstanceCreateInfo create_info{.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+                                   .pNext = nullptr};
+  VkResult result = controller_.OnCreateInstance(&create_info, nullptr, &created_instance);
   EXPECT_EQ(result, VK_ERROR_INITIALIZATION_FAILED);
 }
+
+TEST_F(VulkanLayerControllerTest, OnCreateInstance) {
+  const MockDispatchTable* dispatch_table = controller_.dispatch_table();
+  const MockSubmissionTracker* submission_tracker = controller_.submission_tracker();
+  EXPECT_CALL(*dispatch_table, CreateInstanceDispatchTable).Times(1);
+  EXPECT_CALL(*submission_tracker, SetVulkanLayerProducer).Times(1);
+
+  static constexpr PFN_vkCreateInstance kMockDriverCreateInstance =
+      +[](const VkInstanceCreateInfo* /*create_info*/, const VkAllocationCallbacks* /*allocator*/,
+          VkInstance* /*instance*/) { return VK_SUCCESS; };
+
+  PFN_vkGetInstanceProcAddr mock_get_instance_proc_addr =
+      +[](VkInstance /*instance*/, const char* name) -> PFN_vkVoidFunction {
+    if (strcmp(name, "vkCreateInstance") == 0) {
+      return absl::bit_cast<PFN_vkVoidFunction>(kMockDriverCreateInstance);
+    }
+    return nullptr;
+  };
+
+  VkLayerInstanceLink layer_link = {.pfnNextGetInstanceProcAddr = mock_get_instance_proc_addr};
+  VkLayerInstanceCreateInfo layer_create_info{
+      .sType = VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO,
+      .function = VK_LAYER_LINK_INFO,
+      .u.pLayerInfo = &layer_link};
+  VkInstanceCreateInfo create_info{.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+                                   .pNext = &layer_create_info};
+  VkInstance created_instance;
+  VkResult result = controller_.OnCreateInstance(&create_info, nullptr, &created_instance);
+  EXPECT_EQ(result, VK_SUCCESS);
+  ::testing::Mock::VerifyAndClearExpectations(absl::bit_cast<void*>(submission_tracker));
+
+  // There will be a call at the destructor.
+  EXPECT_CALL(*submission_tracker, SetVulkanLayerProducer).Times(1);
+}  // namespace orbit_vulkan_layer
 
 }  // namespace orbit_vulkan_layer
