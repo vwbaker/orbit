@@ -293,8 +293,8 @@ class VulkanLayerController {
       *property_count = 1;
     }
     if (properties != nullptr) {
-      snprintf(properties->layerName, strlen(kLayerName), kLayerName);
-      snprintf(properties->description, strlen(kLayerDescription), kLayerDescription);
+      snprintf(properties->layerName, sizeof(properties->layerName), kLayerName);
+      snprintf(properties->description, sizeof(properties->description), kLayerDescription);
       properties->implementationVersion = kLayerImplVersion;
       properties->specVersion = kLayerSpecVersion;
     }
@@ -312,8 +312,6 @@ class VulkanLayerController {
       }
       return VK_SUCCESS;
     }
-
-    CHECK(false);
 
     // Vulkan spec mandates returning this when this layer isn't being queried.
     return VK_ERROR_LAYER_NOT_PRESENT;
@@ -403,6 +401,8 @@ class VulkanLayerController {
     }
     return VK_SUCCESS;
   }
+
+  [[nodiscard]] const DispatchTable* dispatch_table() const { return &dispatch_table_; }
 
  private:
   void InitVulkanLayerProducerIfNecessary() {
