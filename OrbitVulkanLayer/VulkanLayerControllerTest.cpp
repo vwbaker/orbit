@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <vulkan/vk_layer.h>
+
 #include "VulkanLayerController.h"
 #include "VulkanLayerProducer.h"
 #include "gmock/gmock.h"
@@ -24,11 +26,20 @@ class MockDispatchTable {
   MOCK_METHOD(PFN_vkEnumerateDeviceExtensionProperties, EnumerateDeviceExtensionProperties,
               (VkPhysicalDevice));
   MOCK_METHOD((void), CreateInstanceDispatchTable, (VkInstance, PFN_vkGetInstanceProcAddr));
+  MOCK_METHOD((void), CreateDeviceDispatchTable, (VkDevice, PFN_vkGetDeviceProcAddr));
+  MOCK_METHOD((void), RemoveInstanceDispatchTable, (VkInstance));
+  MOCK_METHOD((void), RemoveDeviceDispatchTable, (VkDevice));
+  MOCK_METHOD(PFN_vkGetDeviceProcAddr, GetDeviceProcAddr, (VkDevice));
+  MOCK_METHOD(PFN_vkGetInstanceProcAddr, GetInstanceProcAddr, (VkInstance));
+  MOCK_METHOD(PFN_vkDestroyInstance, DestroyInstance, (VkInstance));
+  MOCK_METHOD(PFN_vkDestroyDevice, DestroyDevice, (VkDevice));
 };
 
 class MockDeviceManager {
  public:
   explicit MockDeviceManager(MockDispatchTable* /*dispatch_table*/) {}
+  MOCK_METHOD((void), TrackLogicalDevice, (VkPhysicalDevice, VkDevice));
+  MOCK_METHOD((void), UntrackLogicalDevice, (VkDevice));
 };
 
 class MockQueueManager {
@@ -38,6 +49,7 @@ class MockQueueManager {
 class MockTimerQueryPool {
  public:
   explicit MockTimerQueryPool(MockDispatchTable* /*dispatch_table*/, uint32_t /*num_slots*/) {}
+  MOCK_METHOD((void), InitializeTimerQueryPool, (VkDevice));
 };
 
 class MockSubmissionTracker {
@@ -272,7 +284,8 @@ TEST_F(VulkanLayerControllerTest, InitializationFailsOnCreateInstanceWithNoInfo)
   EXPECT_EQ(result, VK_ERROR_INITIALIZATION_FAILED);
 }
 
-TEST_F(VulkanLayerControllerTest, OnCreateInstance) {
+TEST_F(VulkanLayerControllerTest,
+       WillCreateDispatchTableAndVulkanLayerProducerAndAdvanceLinkageOnCreateInstance) {
   const MockDispatchTable* dispatch_table = controller_.dispatch_table();
   const MockSubmissionTracker* submission_tracker = controller_.submission_tracker();
   EXPECT_CALL(*dispatch_table, CreateInstanceDispatchTable).Times(1);
@@ -290,20 +303,127 @@ TEST_F(VulkanLayerControllerTest, OnCreateInstance) {
     return nullptr;
   };
 
-  VkLayerInstanceLink layer_link = {.pfnNextGetInstanceProcAddr = mock_get_instance_proc_addr};
+  VkLayerInstanceLink layer_link_1 = {.pfnNextGetInstanceProcAddr = mock_get_instance_proc_addr};
+  VkLayerInstanceLink layer_link_2 = {.pfnNextGetInstanceProcAddr = mock_get_instance_proc_addr,
+                                      .pNext = &layer_link_1};
   VkLayerInstanceCreateInfo layer_create_info{
       .sType = VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO,
       .function = VK_LAYER_LINK_INFO,
-      .u.pLayerInfo = &layer_link};
+      .u.pLayerInfo = &layer_link_2};
   VkInstanceCreateInfo create_info{.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
                                    .pNext = &layer_create_info};
   VkInstance created_instance;
   VkResult result = controller_.OnCreateInstance(&create_info, nullptr, &created_instance);
   EXPECT_EQ(result, VK_SUCCESS);
-  ::testing::Mock::VerifyAndClearExpectations(absl::bit_cast<void*>(submission_tracker));
+  EXPECT_EQ(layer_create_info.u.pLayerInfo, &layer_link_1);
 
+  ::testing::Mock::VerifyAndClearExpectations(absl::bit_cast<void*>(submission_tracker));
   // There will be a call at the destructor.
   EXPECT_CALL(*submission_tracker, SetVulkanLayerProducer).Times(1);
-}  // namespace orbit_vulkan_layer
+}
+
+TEST_F(VulkanLayerControllerTest, InitializationFailsOnCreateDeviceWithNoInfo) {
+  VkDevice created_device;
+  VkPhysicalDevice physical_device = {};
+  VkDeviceCreateInfo create_info{.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, .pNext = nullptr};
+  VkResult result =
+      controller_.OnCreateDevice(physical_device, &create_info, nullptr, &created_device);
+  EXPECT_EQ(result, VK_ERROR_INITIALIZATION_FAILED);
+}
+
+TEST_F(VulkanLayerControllerTest, CallInDispatchTableOnGetDeviceProcAddr) {
+  const MockDispatchTable* dispatch_table = controller_.dispatch_table();
+  static constexpr PFN_vkVoidFunction kExpectedFunction = +[]() {};
+  PFN_vkGetDeviceProcAddr mock_get_device_proc_addr =
+      +[](VkDevice /*device*/, const char* /*name*/) { return kExpectedFunction; };
+  EXPECT_CALL(*dispatch_table, GetDeviceProcAddr)
+      .Times(1)
+      .WillOnce(Return(mock_get_device_proc_addr));
+  VkDevice device = {};
+  PFN_vkVoidFunction result = controller_.OnGetDeviceProcAddr(device, "some function");
+  EXPECT_EQ(result, kExpectedFunction);
+}
+
+TEST_F(VulkanLayerControllerTest,
+       WillCreateDispatchTableAndVulkanLayerProducerAndAdvanceLinkageOnCreateDevice) {
+  const MockDispatchTable* dispatch_table = controller_.dispatch_table();
+  EXPECT_CALL(*dispatch_table, CreateDeviceDispatchTable).Times(1);
+  const MockDeviceManager* device_manager = controller_.device_manager();
+  EXPECT_CALL(*device_manager, TrackLogicalDevice).Times(1);
+  const MockTimerQueryPool* timer_query_pool = controller_.timer_query_pool();
+  EXPECT_CALL(*timer_query_pool, InitializeTimerQueryPool).Times(1);
+
+  static constexpr PFN_vkCreateDevice kMockDriverCreateDevice =
+      +[](VkPhysicalDevice /*physical_device*/, const VkDeviceCreateInfo* /*create_info*/,
+          const VkAllocationCallbacks* /*allocator*/,
+          VkDevice* /*instance*/) { return VK_SUCCESS; };
+
+  PFN_vkGetDeviceProcAddr mock_get_device_proc_addr =
+      +[](VkDevice /*device*/, const char * /*name*/) -> PFN_vkVoidFunction { return nullptr; };
+
+  PFN_vkGetInstanceProcAddr mock_get_instance_proc_addr =
+      +[](VkInstance /*instance*/, const char* name) -> PFN_vkVoidFunction {
+    if (strcmp(name, "vkCreateDevice") == 0) {
+      return absl::bit_cast<PFN_vkVoidFunction>(kMockDriverCreateDevice);
+    }
+    return nullptr;
+  };
+
+  VkLayerDeviceLink layer_link_1 = {.pfnNextGetDeviceProcAddr = mock_get_device_proc_addr,
+                                    .pfnNextGetInstanceProcAddr = mock_get_instance_proc_addr};
+  VkLayerDeviceLink layer_link_2 = {.pfnNextGetDeviceProcAddr = mock_get_device_proc_addr,
+                                    .pfnNextGetInstanceProcAddr = mock_get_instance_proc_addr,
+                                    .pNext = &layer_link_1};
+  VkLayerDeviceCreateInfo layer_create_info{.sType = VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO,
+                                            .function = VK_LAYER_LINK_INFO,
+                                            .u.pLayerInfo = &layer_link_2};
+  VkDeviceCreateInfo create_info{.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+                                 .pNext = &layer_create_info};
+  VkDevice created_device;
+  VkPhysicalDevice physical_device = {};
+  VkResult result =
+      controller_.OnCreateDevice(physical_device, &create_info, nullptr, &created_device);
+  EXPECT_EQ(result, VK_SUCCESS);
+  EXPECT_EQ(layer_create_info.u.pLayerInfo, &layer_link_1);
+}
+
+TEST_F(VulkanLayerControllerTest, CallInDispatchTableOnGetInstanceProcAddr) {
+  const MockDispatchTable* dispatch_table = controller_.dispatch_table();
+  static constexpr PFN_vkVoidFunction kExpectedFunction = +[]() {};
+  PFN_vkGetInstanceProcAddr mock_get_instance_proc_addr =
+      +[](VkInstance /*instance*/, const char* /*name*/) { return kExpectedFunction; };
+  EXPECT_CALL(*dispatch_table, GetInstanceProcAddr)
+      .Times(1)
+      .WillOnce(Return(mock_get_instance_proc_addr));
+  VkInstance instance = {};
+  PFN_vkVoidFunction result = controller_.OnGetInstanceProcAddr(instance, "some function");
+  EXPECT_EQ(result, kExpectedFunction);
+}
+
+TEST_F(VulkanLayerControllerTest, WillClearUpOnDestroyInstance) {
+  PFN_vkDestroyInstance mock_destroy_instance =
+      +[](VkInstance /*instance*/, const VkAllocationCallbacks* /*allocator*/) {};
+  const MockDispatchTable* dispatch_table = controller_.dispatch_table();
+  EXPECT_CALL(*dispatch_table, DestroyInstance).Times(1).WillOnce(Return(mock_destroy_instance));
+  EXPECT_CALL(*dispatch_table, RemoveInstanceDispatchTable).Times(1);
+
+  VkInstance instance = {};
+
+  controller_.OnDestroyInstance(instance, nullptr);
+}
+
+TEST_F(VulkanLayerControllerTest, WillClearUpOnDestroyDevice) {
+  PFN_vkDestroyDevice mock_destroy_device =
+      +[](VkDevice /*device*/, const VkAllocationCallbacks* /*allocator*/) {};
+  const MockDispatchTable* dispatch_table = controller_.dispatch_table();
+  EXPECT_CALL(*dispatch_table, DestroyDevice).Times(1).WillOnce(Return(mock_destroy_device));
+  EXPECT_CALL(*dispatch_table, RemoveDeviceDispatchTable).Times(1);
+  const MockDeviceManager* device_manager = controller_.device_manager();
+  EXPECT_CALL(*device_manager, UntrackLogicalDevice).Times(1);
+
+  VkDevice device = {};
+
+  controller_.OnDestroyDevice(device, nullptr);
+}
 
 }  // namespace orbit_vulkan_layer

@@ -408,6 +408,10 @@ class VulkanLayerController {
 
   [[nodiscard]] const SubmissionTracker* submission_tracker() const { return &submission_tracker_; }
 
+  [[nodiscard]] const DeviceManager* device_manager() const { return &device_manager_; }
+
+  [[nodiscard]] const TimerQueryPool* timer_query_pool() const { return &timer_query_pool_; }
+
  private:
   void InitVulkanLayerProducerIfNecessary() {
     absl::MutexLock lock{&vulkan_layer_producer_mutex_};
