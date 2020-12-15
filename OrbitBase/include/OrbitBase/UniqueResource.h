@@ -8,7 +8,7 @@
 #include <functional>
 #include <optional>
 
-namespace OrbitBase {
+namespace orbit_base {
 
 /* unique_resource helps to manage a unique identity which is not a pointer,
    so unique_ptr cannot be used. Typical examples are file or window handles
@@ -79,9 +79,9 @@ class unique_resource {
 
 template <typename Resource, typename Deleter>
 unique_resource(Resource, Deleter)
-    -> unique_resource<std::decay_t<Resource>, std::remove_cv_t<Deleter>>;
+    ->unique_resource<std::decay_t<Resource>, std::remove_cv_t<Deleter>>;
 
-}  // namespace OrbitBase
+}  // namespace orbit_base
 
 #endif  // ORBIT_BASE_UNIQUE_RESOURCE_H_
 #

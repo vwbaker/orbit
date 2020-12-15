@@ -63,17 +63,17 @@ std::string SamplingReportDataView::GetValue(int row, int column) {
 
 #define ORBIT_PROC_SORT(Member)                                                      \
   [&](int a, int b) {                                                                \
-    return OrbitUtils::Compare(functions[a].Member, functions[b].Member, ascending); \
+    return orbit_core::Compare(functions[a].Member, functions[b].Member, ascending); \
   }
 
 #define ORBIT_CUSTOM_FUNC_SORT(Func)                                               \
   [&](int a, int b) {                                                              \
-    return OrbitUtils::Compare(Func(functions[a]), Func(functions[b]), ascending); \
+    return orbit_core::Compare(Func(functions[a]), Func(functions[b]), ascending); \
   }
 
 #define ORBIT_MODULE_NAME_FUNC_SORT                                                        \
   [&](int a, int b) {                                                                      \
-    return OrbitUtils::Compare(std::filesystem::path(functions[a].module_path).filename(), \
+    return orbit_core::Compare(std::filesystem::path(functions[a].module_path).filename(), \
                                std::filesystem::path(functions[b].module_path).filename(), \
                                ascending);                                                 \
   }
@@ -249,9 +249,10 @@ void SamplingReportDataView::OnContextMenu(const std::string& action, int menu_i
   }
 }
 
-void SamplingReportDataView::OnSelect(int index) {
-  SampledFunction& func = GetSampledFunction(index);
-  sampling_report_->OnSelectAddress(func.absolute_address, tid_);
+void SamplingReportDataView::OnSelect(std::optional<int> index) {
+  uint64_t function_address = index.has_value() ? GetSampledFunction(index.value()).absolute_address
+                                                : SamplingReport::kInvalidFunctionAddress;
+  sampling_report_->OnSelectAddress(function_address, tid_);
 }
 
 void SamplingReportDataView::LinkDataView(DataView* data_view) {

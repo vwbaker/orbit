@@ -6,7 +6,7 @@
 
 #include "OrbitBase/Logging.h"
 
-namespace OrbitSshQt {
+namespace orbit_ssh_qt {
 
 SftpCopyToRemoteOperation::SftpCopyToRemoteOperation(Session* session, SftpChannel* channel)
     : session_(session), channel_(channel) {
@@ -52,12 +52,12 @@ outcome::result<void> SftpCopyToRemoteOperation::startup() {
     }
     case State::kStarted:
     case State::kLocalFileOpened: {
-      OUTCOME_TRY(sftp_file, OrbitSsh::SftpFile::Open(session_->GetRawSession(),
-                                                      channel_->GetRawSftp(), destination_.string(),
-                                                      OrbitSsh::FxfFlags::kWrite |
-                                                          OrbitSsh::FxfFlags::kCreate |
-                                                          OrbitSsh::FxfFlags::kTruncate,
-                                                      static_cast<int>(destination_mode_)));
+      OUTCOME_TRY(sftp_file,
+                  orbit_ssh::SftpFile::Open(
+                      session_->GetRawSession(), channel_->GetRawSftp(), destination_.string(),
+                      orbit_ssh::FxfFlags::kWrite | orbit_ssh::FxfFlags::kCreate |
+                          orbit_ssh::FxfFlags::kTruncate,
+                      static_cast<int>(destination_mode_)));
       sftp_file_ = std::move(sftp_file);
       SetState(State::kRemoteFileOpened);
       ABSL_FALLTHROUGH_INTENDED;
@@ -123,4 +123,4 @@ void SftpCopyToRemoteOperation::HandleEagain() {
   }
 }
 
-}  // namespace OrbitSshQt
+}  // namespace orbit_ssh_qt

@@ -30,7 +30,10 @@ target_sources(OrbitVulkanLayer PRIVATE
 target_link_libraries(OrbitVulkanLayer PUBLIC
         OrbitBase
         OrbitProducer
-        OrbitProtos)
+        OrbitProtos
+        OrbitProtos
+        Vulkan::Vulkan
+        Vulkan::ValidationLayers)
 
 add_executable(OrbitVulkanLayerTests)
 

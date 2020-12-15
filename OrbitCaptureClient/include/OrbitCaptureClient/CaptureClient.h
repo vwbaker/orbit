@@ -31,7 +31,7 @@ class CaptureClient {
 
   [[nodiscard]] ErrorMessageOr<void> StartCapture(
       ThreadPool* thread_pool, const ProcessData& process,
-      const OrbitClientData::ModuleManager& module_manager,
+      const orbit_client_data::ModuleManager& module_manager,
       absl::flat_hash_map<uint64_t, orbit_client_protos::FunctionInfo> selected_functions,
       TracepointInfoSet selected_tracepoints, UserDefinedCaptureData user_defined_capture_data,
       bool enable_introspection);
@@ -54,10 +54,10 @@ class CaptureClient {
     return state_ != State::kStopped;
   }
 
-  bool TryAbortCapture();
+  bool AbortCaptureAndWait(int64_t max_wait_ms);
 
  private:
-  void Capture(ProcessData&& process, const OrbitClientData::ModuleManager& module_manager,
+  void Capture(ProcessData&& process, const orbit_client_data::ModuleManager& module_manager,
                absl::flat_hash_map<uint64_t, orbit_client_protos::FunctionInfo> selected_functions,
                TracepointInfoSet selected_tracepoints,
                UserDefinedCaptureData user_defined_capture_data, bool enable_introspection);
@@ -69,6 +69,7 @@ class CaptureClient {
   std::unique_ptr<grpc::ClientReaderWriter<orbit_grpc_protos::CaptureRequest,
                                            orbit_grpc_protos::CaptureResponse>>
       reader_writer_;
+  absl::Mutex context_and_stream_mutex_;
 
   CaptureListener* capture_listener_ = nullptr;
 

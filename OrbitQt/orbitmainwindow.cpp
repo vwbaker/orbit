@@ -4,6 +4,8 @@
 
 #include "orbitmainwindow.h"
 
+#include <absl/flags/flag.h>
+
 #include <QBuffer>
 #include <QCheckBox>
 #include <QClipboard>
@@ -275,6 +277,10 @@ OrbitMainWindow::OrbitMainWindow(QApplication* a_App,
   setWindowTitle({});
   std::filesystem::path icon_file_name = (orbit_base::GetExecutableDir() / "orbit.ico");
   this->setWindowIcon(QIcon(QString::fromStdString(icon_file_name.string())));
+
+  if (!absl::GetFlag(FLAGS_devmode)) {
+    ui->actionIntrospection->setVisible(false);
+  }
 
   GOrbitApp->PostInit();
 
@@ -594,7 +600,7 @@ void OrbitMainWindow::on_actionAbout_triggered() {
   orbit_qt::OrbitAboutDialog dialog{this};
   dialog.setWindowTitle("About");
   dialog.SetVersionString(QCoreApplication::applicationVersion());
-  dialog.SetBuildInformation(QString::fromStdString(OrbitCore::GetBuildReport()));
+  dialog.SetBuildInformation(QString::fromStdString(orbit_core::GetBuildReport()));
 
   QFile licenseFile{QDir{QCoreApplication::applicationDirPath()}.filePath("NOTICE")};
   if (licenseFile.open(QIODevice::ReadOnly)) {

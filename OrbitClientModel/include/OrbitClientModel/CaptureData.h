@@ -24,7 +24,7 @@
 class CaptureData {
  public:
   explicit CaptureData(
-      ProcessData&& process, OrbitClientData::ModuleManager* module_manager,
+      ProcessData&& process, orbit_client_data::ModuleManager* module_manager,
       absl::flat_hash_map<uint64_t, orbit_client_protos::FunctionInfo> selected_functions,
       TracepointInfoSet selected_tracepoints, UserDefinedCaptureData user_defined_capture_data)
       : process_(std::move(process)),
@@ -192,14 +192,13 @@ class CaptureData {
   void EnableFrameTrack(const orbit_client_protos::FunctionInfo& function);
   void DisableFrameTrack(const orbit_client_protos::FunctionInfo& function);
   [[nodiscard]] bool IsFrameTrackEnabled(const orbit_client_protos::FunctionInfo& function) const;
-  void ClearUserDefinedCaptureData();
   [[nodiscard]] const UserDefinedCaptureData& user_defined_capture_data() const {
     return user_defined_capture_data_;
   }
 
  private:
   ProcessData process_;
-  OrbitClientData::ModuleManager* module_manager_;
+  orbit_client_data::ModuleManager* module_manager_;
   absl::flat_hash_map<uint64_t, orbit_client_protos::FunctionInfo> selected_functions_;
 
   TracepointInfoSet selected_tracepoints_;
