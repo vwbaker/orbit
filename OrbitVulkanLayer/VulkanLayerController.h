@@ -412,6 +412,8 @@ class VulkanLayerController {
 
   [[nodiscard]] const TimerQueryPool* timer_query_pool() const { return &timer_query_pool_; }
 
+  [[nodiscard]] const QueueManager* queue_manager() const { return &queue_manager_; }
+
  private:
   void InitVulkanLayerProducerIfNecessary() {
     absl::MutexLock lock{&vulkan_layer_producer_mutex_};
