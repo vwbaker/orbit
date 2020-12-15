@@ -16,18 +16,19 @@ namespace orbit_vulkan_layer {
 
 /**
  * This class controls the logic of this layer. For the instrumented vulkan functions,
- * it provides PreCall*, PostCall* and Call* functions, where the Call* functions just forward
- * to the next layer (using the dispatch table).
- * PreCall* functions are executed before the `actual` vulkan call and PostCall* afterwards.
- * PreCall/PostCall are omitted when not needed.
+ * it provides an `On*` function (e.g. for `vkQueueSubmit` there is `OnQueueSubmit`) that delegates
+ * to the driver/next layer (see `DispatchTable`) and calls the required functions for this layer to
+ * function properly. So it ties together the classes like the `SubmissionTracker` or the
+ * `TimerQueryPool`.
+ * In particular it performs the bootstrapping code (OnCreateInstance/Device) and the enumerations
+ * required by every vulkan layer.
  *
  * Usage: For an instrumented vulkan function "X" a common pattern from the layers entry (Main.cpp)
- * would be:
- * ```
- * logic_.PreCallX(...);
- * logic_.CallX(...);
- * logic_.PostCallX(...);
- * ```
+ * `OnX` needs to be called to the controller.
+ *
+ * Note, the main reason, to not expose the vulkan functions directly in this class, is that this
+ * allows us to write tests that check if we glue the code correctly together and does the proper
+ * bootstrapping.
  */
 template <class DispatchTable, class QueueManager, class DeviceManager, class TimerQueryPool,
           class SubmissionTracker>
