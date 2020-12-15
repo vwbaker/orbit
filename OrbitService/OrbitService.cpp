@@ -13,7 +13,7 @@
 
 #include "OrbitBase/Logging.h"
 #include "OrbitGrpcServer.h"
-#include "OrbitService/ProducerSideChannel.h"
+#include "OrbitProducerSideChannel/ProducerSideChannel.h"
 #include "OrbitVersion/OrbitVersion.h"
 #include "ProducerSideServer.h"
 
@@ -60,9 +60,11 @@ void OrbitService::Run(std::atomic<bool>* exit_requested) {
   }
   LOG("gRPC server is running");
 
-  LOG("Starting producer-side server at %s", kProducerSideUnixDomainSocketPath);
+  LOG("Starting producer-side server at %s",
+      orbit_producer_side_channel::kProducerSideUnixDomainSocketPath);
   ProducerSideServer producer_side_server;
-  if (!producer_side_server.BuildAndStart(kProducerSideUnixDomainSocketPath)) {
+  if (!producer_side_server.BuildAndStart(
+          orbit_producer_side_channel::kProducerSideUnixDomainSocketPath)) {
     ERROR("Unable to start producer-side server");
     return;
   }

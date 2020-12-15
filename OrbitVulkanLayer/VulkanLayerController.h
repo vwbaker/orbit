@@ -6,7 +6,7 @@
 #define ORBIT_VULKAN_LAYER_LAYER_LOGIC_H_
 
 #include "OrbitBase/Logging.h"
-#include "OrbitService/ProducerSideChannel.h"
+#include "OrbitProducerSideChannel/ProducerSideChannel.h"
 #include "VulkanLayerProducerImpl.h"
 #include "absl/base/casts.h"
 #include "vulkan/vk_layer.h"
@@ -420,7 +420,7 @@ class VulkanLayerController {
     absl::MutexLock lock{&vulkan_layer_producer_mutex_};
     if (vulkan_layer_producer_ == nullptr) {
       vulkan_layer_producer_ = std::make_unique<VulkanLayerProducerImpl>();
-      vulkan_layer_producer_->BringUp(orbit_service::CreateProducerSideChannel());
+      vulkan_layer_producer_->BringUp(orbit_producer_side_channel::CreateProducerSideChannel());
       submission_tracker_.SetVulkanLayerProducer(vulkan_layer_producer_.get());
     }
   }

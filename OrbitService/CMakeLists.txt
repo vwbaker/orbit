@@ -10,9 +10,6 @@ project(OrbitServiceLib)
 add_library(OrbitServiceLib STATIC)
 target_compile_options(OrbitServiceLib PRIVATE ${STRICT_COMPILE_FLAGS})
 
-target_sources(OrbitServiceLib PUBLIC
-        include/OrbitService/ProducerSideChannel.h)
-
 target_sources(OrbitServiceLib PRIVATE
         CaptureEventBuffer.h
         CaptureEventSender.h
@@ -56,6 +53,7 @@ target_link_libraries(OrbitServiceLib PUBLIC
         ElfUtils
         OrbitFramePointerValidator
         OrbitLinuxTracing
+        OrbitProducerSideChannel
         OrbitProtos
         OrbitVersion)
 
