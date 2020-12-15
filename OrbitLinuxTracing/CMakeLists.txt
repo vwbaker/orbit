@@ -24,6 +24,8 @@ target_sources(OrbitLinuxTracing PUBLIC
         include/OrbitLinuxTracing/TracerListener.h)
 
 target_sources(OrbitLinuxTracing PRIVATE
+        ContextSwitchAndThreadStateVisitor.cpp
+        ContextSwitchAndThreadStateVisitor.h
         ContextSwitchManager.cpp
         ContextSwitchManager.h
         Function.h
@@ -49,8 +51,8 @@ target_sources(OrbitLinuxTracing PRIVATE
         PerfEventRingBuffer.cpp
         PerfEventRingBuffer.h
         PerfEventVisitor.h
-        ThreadStateVisitor.cpp
-        ThreadStateVisitor.h
+        ThreadStateManager.cpp
+        ThreadStateManager.h
         Tracer.cpp
         TracerThread.cpp
         TracerThread.h
@@ -77,7 +79,7 @@ if (NOT WIN32)
             LinuxTracingUtilsTest.cpp
             PerfEventProcessorTest.cpp
             PerfEventQueueTest.cpp
-            ThreadStateVisitorTest.cpp
+            ThreadStateManagerTest.cpp
             UprobesFunctionCallManagerTest.cpp
             UprobesReturnAddressManagerTest.cpp)
 endif()

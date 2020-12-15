@@ -2,20 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef ORBIT_LINUX_TRACING_THREAD_STATE_VISITOR_H_
-#define ORBIT_LINUX_TRACING_THREAD_STATE_VISITOR_H_
+#ifndef ORBIT_LINUX_TRACING_THREAD_STATE_MANAGER_H_
+#define ORBIT_LINUX_TRACING_THREAD_STATE_MANAGER_H_
 
-#include <OrbitLinuxTracing/TracerListener.h>
-#include <absl/container/flat_hash_map.h>
-#include <absl/hash/hash.h>
-#include <stdint.h>
-#include <sys/types.h>
-
-#include <optional>
-#include <vector>
-
-#include "PerfEvent.h"
-#include "PerfEventVisitor.h"
+#include "OrbitBase/Logging.h"
+#include "absl/container/flat_hash_map.h"
 #include "capture.pb.h"
 
 namespace LinuxTracing {
@@ -23,7 +14,7 @@ namespace LinuxTracing {
 // ThreadStateManager stores the state of threads, handles the state transitions,
 // builds and returns ThreadStateSlices.
 // The following diagram shows the relationship between the states and the tracepoints.
-// Note that, for some state transitions multiple tracepoints could be used
+// Note that, for some state transitions, multiple tracepoints could be used
 // (e.g., both sched:sched_waking and sched:sched_wakeup for "not runnable" to "runnable").
 // The diagram indicates them all but we only use the ones not in parentheses.
 // Also note we don't have a transition out of the diagram for a thread that exits.
@@ -72,25 +63,6 @@ class ThreadStateManager {
   absl::flat_hash_map<pid_t, OpenState> tid_open_states_;
 };
 
-class ThreadStateVisitor : public PerfEventVisitor {
- public:
-  void SetListener(TracerListener* listener) { listener_ = listener; }
-
-  void ProcessInitialState(uint64_t timestamp_ns, pid_t tid, char state_char);
-  void visit(TaskNewtaskPerfEvent* event) override;
-  void visit(SchedSwitchPerfEvent* event) override;
-  void visit(SchedWakeupPerfEvent* event) override;
-  void ProcessRemainingOpenStates(uint64_t timestamp_ns);
-
- private:
-  static std::optional<orbit_grpc_protos::ThreadStateSlice::ThreadState> GetThreadStateFromChar(
-      char c);
-  static orbit_grpc_protos::ThreadStateSlice::ThreadState GetThreadStateFromBits(uint64_t bits);
-
-  TracerListener* listener_ = nullptr;
-  ThreadStateManager state_manager_;
-};
-
 }  // namespace LinuxTracing
 
-#endif  // ORBIT_LINUX_TRACING_THREAD_STATE_VISITOR_H_
+#endif  // ORBIT_LINUX_TRACING_THREAD_STATE_MANAGER_H_
