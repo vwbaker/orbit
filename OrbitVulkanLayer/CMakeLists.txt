@@ -31,7 +31,6 @@ target_link_libraries(OrbitVulkanLayer PUBLIC
         OrbitBase
         OrbitProducer
         OrbitProtos
-        OrbitProtos
         Vulkan::Vulkan
         Vulkan::ValidationLayers)
 
@@ -45,7 +44,8 @@ target_sources(OrbitVulkanLayerTests PRIVATE
         SubmissionTrackerTest.cpp
         TimerQueryPoolTest.cpp
         QueueManagerTest.cpp
-        VulkanLayerControllerTest.cpp)
+        VulkanLayerControllerTest.cpp
+        VulkanLayerProducerImplTest.cpp)
 
 target_link_libraries(
         OrbitVulkanLayerTests PRIVATE
