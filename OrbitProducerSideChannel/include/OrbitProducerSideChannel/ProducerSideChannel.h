@@ -5,12 +5,20 @@
 #ifndef ORBIT_PRODUCER_SIDE_CHANNEL_PRODUCER_SIDE_CHANNEL_H_
 #define ORBIT_PRODUCER_SIDE_CHANNEL_PRODUCER_SIDE_CHANNEL_H_
 
-#include "grpcpp/grpcpp.h"
+#include <absl/strings/str_format.h>
+#include <grpcpp/grpcpp.h>
+
+#include <memory>
+#include <string>
 
 namespace orbit_producer_side_channel {
 
-constexpr const char* kProducerSideUnixDomainSocketPath = "/tmp/orbit-producer-side-socket";
+// This is the default path of the Unix domain socket used for the communication
+// between producers of CaptureEvents and OrbitService.
+constexpr std::string_view kProducerSideUnixDomainSocketPath = "/tmp/orbit-producer-side-socket";
 
+// This function returns a gRPC channel that uses a Unix domain socket,
+// by default the one specified by kProducerSideUnixDomainSocketPath.
 inline std::shared_ptr<grpc::Channel> CreateProducerSideChannel(
     std::string_view unix_domain_socket_path = kProducerSideUnixDomainSocketPath) {
   std::string server_address = absl::StrFormat("unix:%s", unix_domain_socket_path);

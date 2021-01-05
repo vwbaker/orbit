@@ -5,9 +5,12 @@
 project(OrbitProducerSideChannel)
 
 add_library(OrbitProducerSideChannel INTERFACE)
-target_compile_options(OrbitProducerSideChannel INTERFACE ${STRICT_COMPILE_FLAGS})
 
 target_sources(OrbitProducerSideChannel INTERFACE
         include/OrbitProducerSideChannel/ProducerSideChannel.h)
 
 target_include_directories(OrbitProducerSideChannel INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+target_link_libraries(OrbitProducerSideChannel INTERFACE
+        CONAN_PKG::abseil
+        CONAN_PKG::grpc)

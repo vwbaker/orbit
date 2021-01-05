@@ -51,9 +51,9 @@ std::string MapGpuTimelineToTrackLabel(std::string_view timeline) {
 
 }  // namespace orbit_gl
 
-GpuTrack::GpuTrack(TimeGraph* time_graph, std::shared_ptr<StringManager> string_manager,
-                   uint64_t timeline_hash)
-    : TimerTrack(time_graph) {
+GpuTrack::GpuTrack(TimeGraph* time_graph, StringManager* string_manager, uint64_t timeline_hash,
+                   OrbitApp* app)
+    : TimerTrack(time_graph, app) {
   text_renderer_ = time_graph->GetTextRenderer();
   timeline_hash_ = timeline_hash;
   string_manager_ = std::move(string_manager);
@@ -71,11 +71,11 @@ void GpuTrack::OnTimer(const orbit_client_protos::TimerInfo& timer_info) {
 }
 
 bool GpuTrack::IsTimerActive(const TimerInfo& timer_info) const {
-  bool is_same_tid_as_selected = timer_info.thread_id() == GOrbitApp->selected_thread_id();
+  bool is_same_tid_as_selected = timer_info.thread_id() == app_->selected_thread_id();
   // We do not properly track the PID for GPU jobs and we still want to show
   // all jobs as active when no thread is selected, so this logic is a bit
   // different than SchedulerTrack::IsTimerActive.
-  bool no_thread_selected = GOrbitApp->selected_thread_id() == orbit_base::kAllProcessThreadsTid;
+  bool no_thread_selected = app_->selected_thread_id() == orbit_base::kAllProcessThreadsTid;
 
   return is_same_tid_as_selected || no_thread_selected;
 }
@@ -177,8 +177,7 @@ void GpuTrack::SetTimesliceText(const TimerInfo& timer_info, double elapsed_us, 
           timer_info.type() == TimerInfo::kGpuDebugMarker);
 
     std::string text = absl::StrFormat(
-        "%s  %s", time_graph_->GetStringManager()->Get(timer_info.user_data_key()).value_or(""),
-        time.c_str());
+        "%s  %s", string_manager_->Get(timer_info.user_data_key()).value_or(""), time.c_str());
     text_box->SetText(text);
   }
 
