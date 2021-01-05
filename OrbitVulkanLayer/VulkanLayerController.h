@@ -2,11 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef ORBIT_VULKAN_LAYER_LAYER_LOGIC_H_
-#define ORBIT_VULKAN_LAYER_LAYER_LOGIC_H_
+#ifndef ORBIT_VULKAN_LAYER_VULKAN_LAYER_CONTROLLER_H_
+#define ORBIT_VULKAN_LAYER_VULKAN_LAYER_CONTROLLER_H_
 
 #include "OrbitBase/Logging.h"
-#include "OrbitProducerSideChannel/ProducerSideChannel.h"
 #include "VulkanLayerProducerImpl.h"
 #include "absl/base/casts.h"
 #include "vulkan/vk_layer.h"
@@ -15,34 +14,31 @@
 namespace orbit_vulkan_layer {
 
 /**
- * This class controls the logic of this layer. For the instrumented vulkan functions,
+ * This class controls the logic of this layer. For the intercepted Vulkan functions,
  * it provides an `On*` function (e.g. for `vkQueueSubmit` there is `OnQueueSubmit`) that delegates
  * to the driver/next layer (see `DispatchTable`) and calls the required functions for this layer to
- * function properly. So it ties together the classes like the `SubmissionTracker` or the
- * `TimerQueryPool`.
- * In particular it performs the bootstrapping code (OnCreateInstance/Device) and the enumerations
- * required by every vulkan layer.
+ * function properly. So it ties together classes like `SubmissionTracker` or `TimerQueryPool`.
+ * In particular it executes the bootstrapping code (OnCreateInstance/Device) and the enumerations
+ * required by every Vulkan layer, to describe the layer as well as the extensions it uses.
  *
- * Usage: For an instrumented vulkan function "X" a common pattern from the layers entry (Main.cpp)
- * `OnX` needs to be called to the controller.
+ * Usage: For an intercepted Vulkan function "X" in the layers entry (EntryPoints.cpp), `OnX`
+ * needs to be called on this controller.
  *
- * Note, the main reason, to not expose the vulkan functions directly in this class, is that this
- * allows us to write tests that check if we glue the code correctly together and does the proper
- * bootstrapping.
+ * Note the main reason not to expose the Vulkan functions directly in this class is that this
+ * allows us to write tests. Those tests can check if we glue the code correctly together
+ * and if we do the proper bootstrapping.
  */
 template <class DispatchTable, class QueueManager, class DeviceManager, class TimerQueryPool,
           class SubmissionTracker>
 class VulkanLayerController {
  public:
-  // layer metadata
-  static constexpr const char* const kLayerName = "ORBIT_VK_LAYER";
-  static constexpr const char* const kLayerDescription =
-      "Provides GPU insights for the Orbit Profiler";
+  // Layer metadata. This must be in sync with the json file in the resources.
+  static constexpr const char* kLayerName = "ORBIT_VK_LAYER";
+  static constexpr const char* kLayerDescription = "Provides GPU insights for the Orbit Profiler";
+  static constexpr uint32_t kLayerImplVersion = 1;
+  static constexpr uint32_t kLayerSpecVersion = VK_API_VERSION_1_1;
 
-  static constexpr const uint32_t kLayerImplVersion = 1;
-  static constexpr const uint32_t kLayerSpecVersion = VK_API_VERSION_1_1;
-
-  static constexpr std::array<VkExtensionProperties, 3> kDeviceExtensions = {
+  static constexpr std::array<VkExtensionProperties, 3> kRequiredDeviceExtensions = {
       VkExtensionProperties{.extensionName = VK_EXT_DEBUG_MARKER_EXTENSION_NAME,
                             .specVersion = VK_EXT_DEBUG_MARKER_SPEC_VERSION},
       VkExtensionProperties{.extensionName = VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
@@ -65,11 +61,13 @@ class VulkanLayerController {
   [[nodiscard]] VkResult OnCreateInstance(const VkInstanceCreateInfo* create_info,
                                           const VkAllocationCallbacks* allocator,
                                           VkInstance* instance) {
-    // The specification ensures that the create_info pointer must not be nullptr.
+    // The specification ensures that the create_info pointer is not nullptr.
     CHECK(create_info != nullptr);
 
     auto* layer_create_info = absl::bit_cast<VkLayerInstanceCreateInfo*>(create_info->pNext);
 
+    // Iterate over the create info chain to find the layer linkage information. This contains
+    // the GetInstanceProcAddr function of the next layer (or the driver if this is the last layer).
     while (layer_create_info != nullptr &&
            (layer_create_info->sType != VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO ||
             layer_create_info->function != VK_LAYER_LINK_INFO)) {
@@ -89,12 +87,15 @@ class VulkanLayerController {
     layer_create_info->u.pLayerInfo = layer_create_info->u.pLayerInfo->pNext;
 
     // Need to call vkCreateInstance down the chain to actually create the
-    // instance, as we need it to be alive in the create instance dispatch table.
+    // instance, as we need the instance to be alive in the create instance dispatch table.
     auto create_instance = absl::bit_cast<PFN_vkCreateInstance>(
         next_get_instance_proc_addr_function(VK_NULL_HANDLE, "vkCreateInstance"));
     VkResult result = create_instance(create_info, allocator, instance);
 
-    dispatch_table_.CreateInstanceDispatchTable(*instance, next_get_instance_proc_addr_function);
+    // Only create our dispatch table, if the instance was successfully created.
+    if (result == VK_SUCCESS) {
+      dispatch_table_.CreateInstanceDispatchTable(*instance, next_get_instance_proc_addr_function);
+    }
 
     return result;
   }
@@ -129,19 +130,24 @@ class VulkanLayerController {
         next_get_instance_proc_addr_function(VK_NULL_HANDLE, "vkCreateDevice"));
     VkResult result = create_device_function(physical_device, create_info, allocator, device);
 
-    dispatch_table_.CreateDeviceDispatchTable(*device, next_get_device_proc_addr_function);
+    // Only create our dispatch table and do the initialization of this device, if the it was
+    // actually created.
+    if (result == VK_SUCCESS) {
+      dispatch_table_.CreateDeviceDispatchTable(*device, next_get_device_proc_addr_function);
 
-    device_manager_.TrackLogicalDevice(physical_device, *device);
-    timer_query_pool_.InitializeTimerQueryPool(*device);
+      device_manager_.TrackLogicalDevice(physical_device, *device);
+      timer_query_pool_.InitializeTimerQueryPool(*device);
+    }
 
     return result;
   }
 
-  [[nodiscard]] PFN_vkVoidFunction OnGetDeviceProcAddr(VkDevice device, const char* name) {
+  [[nodiscard]] PFN_vkVoidFunction ForwardGetDeviceProcAddr(VkDevice device, const char* name) {
     return dispatch_table_.GetDeviceProcAddr(device)(device, name);
   }
 
-  [[nodiscard]] PFN_vkVoidFunction OnGetInstanceProcAddr(VkInstance instance, const char* name) {
+  [[nodiscard]] PFN_vkVoidFunction ForwardGetInstanceProcAddr(VkInstance instance,
+                                                              const char* name) {
     return dispatch_table_.GetInstanceProcAddr(instance)(instance, name);
   }
 
@@ -170,9 +176,8 @@ class VulkanLayerController {
 
   [[nodiscard]] VkResult OnResetCommandPool(VkDevice device, VkCommandPool command_pool,
                                             VkCommandPoolResetFlags flags) {
-    VkResult result = dispatch_table_.ResetCommandPool(device)(device, command_pool, flags);
     submission_tracker_.ResetCommandPool(command_pool);
-    return result;
+    return dispatch_table_.ResetCommandPool(device)(device, command_pool, flags);
   }
 
   [[nodiscard]] VkResult OnAllocateCommandBuffers(VkDevice device,
@@ -181,9 +186,13 @@ class VulkanLayerController {
     VkResult result =
         dispatch_table_.AllocateCommandBuffers(device)(device, allocate_info, command_buffers);
 
-    VkCommandPool pool = allocate_info->commandPool;
-    const uint32_t command_buffer_count = allocate_info->commandBufferCount;
-    submission_tracker_.TrackCommandBuffers(device, pool, command_buffers, command_buffer_count);
+    // Only track the command buffers, if they were successfully allocated.
+    if (result == VK_SUCCESS) {
+      VkCommandPool pool = allocate_info->commandPool;
+      const uint32_t command_buffer_count = allocate_info->commandBufferCount;
+      submission_tracker_.TrackCommandBuffers(device, pool, command_buffers, command_buffer_count);
+    }
+
     return result;
   }
 
@@ -199,7 +208,11 @@ class VulkanLayerController {
                                               const VkCommandBufferBeginInfo* begin_info) {
     VkResult result =
         dispatch_table_.BeginCommandBuffer(command_buffer)(command_buffer, begin_info);
-    submission_tracker_.MarkCommandBufferBegin(command_buffer);
+
+    // Only mark the command buffer's begin, if the Vulkan call was successful.
+    if (result == VK_SUCCESS) {
+      submission_tracker_.MarkCommandBufferBegin(command_buffer);
+    }
     return result;
   }
 
@@ -227,11 +240,15 @@ class VulkanLayerController {
 
   [[nodiscard]] VkResult OnQueueSubmit(VkQueue queue, uint32_t submit_count,
                                        const VkSubmitInfo* submits, VkFence fence) {
-    auto queue_submission_optional =
+    std::optional<typename SubmissionTracker::QueueSubmission> queue_submission_optional =
         submission_tracker_.PersistCommandBuffersOnSubmit(submit_count, submits);
     VkResult result = dispatch_table_.QueueSubmit(queue)(queue, submit_count, submits, fence);
-    submission_tracker_.PersistDebugMarkersOnSubmit(queue, submit_count, submits,
-                                                    queue_submission_optional);
+
+    // Only persist the submission, if the submit was successful.
+    if (result == VK_SUCCESS) {
+      submission_tracker_.PersistDebugMarkersOnSubmit(queue, submit_count, submits,
+                                                      queue_submission_optional);
+    }
     return result;
   }
 
@@ -246,6 +263,7 @@ class VulkanLayerController {
       dispatch_table_.CmdBeginDebugUtilsLabelEXT(command_buffer)(command_buffer, label_info);
     }
 
+    // Specified by the standard.
     CHECK(label_info != nullptr);
     submission_tracker_.MarkDebugMarkerBegin(command_buffer, label_info->pLabelName,
                                              {
@@ -268,6 +286,8 @@ class VulkanLayerController {
     if (dispatch_table_.IsDebugMarkerExtensionSupported(command_buffer)) {
       dispatch_table_.CmdDebugMarkerBeginEXT(command_buffer)(command_buffer, marker_info);
     }
+
+    // Specified by the standard.
     CHECK(marker_info != nullptr);
     submission_tracker_.MarkDebugMarkerBegin(command_buffer, marker_info->pMarkerName,
                                              {
@@ -291,7 +311,7 @@ class VulkanLayerController {
 
   [[nodiscard]] VkResult OnEnumerateInstanceLayerProperties(uint32_t* property_count,
                                                             VkLayerProperties* properties) {
-    // Vulkan spec dictates that we are only supposed to enumerate ourselve.
+    // Vulkan spec dictates that we are only supposed to enumerate ourselves.
     if (property_count != nullptr) {
       *property_count = 1;
     }
@@ -324,24 +344,25 @@ class VulkanLayerController {
                                                               const char* layer_name,
                                                               uint32_t* property_count,
                                                               VkExtensionProperties* properties) {
-    // If our layer is queried exclusively, we just return our extensions
+    // If our layer is queried exclusively, we just return our extensions. Note that queries with
+    // layer_name == nullptr request all extensions.
     if (layer_name != nullptr && strcmp(layer_name, kLayerName) == 0) {
-      // If properties == nullptr, only the number of extensions are queried.
+      // If properties == nullptr, only the number of extensions is queried.
       if (properties == nullptr) {
-        *property_count = kDeviceExtensions.size();
+        *property_count = kRequiredDeviceExtensions.size();
         return VK_SUCCESS;
       }
-      uint32_t num_extensions_to_copy = kDeviceExtensions.size();
+      uint32_t num_extensions_to_copy = kRequiredDeviceExtensions.size();
       // In the case that less extensions are queried then the layer uses, we copy on this number
       // and return VK_INCOMPLETE, according to the specification.
       if (*property_count < num_extensions_to_copy) {
         num_extensions_to_copy = *property_count;
       }
-      memcpy(properties, kDeviceExtensions.data(),
+      memcpy(properties, kRequiredDeviceExtensions.data(),
              num_extensions_to_copy * sizeof(VkExtensionProperties));
       *property_count = num_extensions_to_copy;
 
-      if (num_extensions_to_copy < kDeviceExtensions.size()) {
+      if (num_extensions_to_copy < kRequiredDeviceExtensions.size()) {
         return VK_INCOMPLETE;
       }
       return VK_SUCCESS;
@@ -353,7 +374,7 @@ class VulkanLayerController {
           physical_device, layer_name, property_count, properties);
     }
 
-    // This is a general query, so we need to append our extensions to the once down in the
+    // This is a general query, so we need to append our extensions to the ones down in the
     // callchain.
     uint32_t num_other_extensions;
     VkResult result = dispatch_table_.EnumerateDeviceExtensionProperties(physical_device)(
@@ -369,17 +390,17 @@ class VulkanLayerController {
       return result;
     }
 
-    // Lets append all of our extensions, that are not yet listed.
-    // Note, as this list of our extensions is very small, we are fine with O(N*M) runtime.
-    for (const auto& extension : kDeviceExtensions) {
-      bool is_unique = true;
+    // Append all of our extensions, that are not yet listed.
+    // Note as this list of our extensions is very small, we are fine with O(N*M) runtime.
+    for (const auto& extension : kRequiredDeviceExtensions) {
+      bool already_present = false;
       for (const auto& other_extension : extensions) {
         if (strcmp(extension.extensionName, other_extension.extensionName) == 0) {
-          is_unique = false;
+          already_present = true;
           break;
         }
       }
-      if (is_unique) {
+      if (!already_present) {
         extensions.push_back(extension);
       }
     }
@@ -391,7 +412,7 @@ class VulkanLayerController {
     }
 
     uint32_t num_extensions_to_copy = extensions.size();
-    // In the case that less extensions are queried then the layer uses, we copy on this number and
+    // In the case that less extensions are queried than the layer uses, we copy this number and
     // return VK_INCOMPLETE, according to the specification.
     if (*property_count < num_extensions_to_copy) {
       num_extensions_to_copy = *property_count;
@@ -420,7 +441,9 @@ class VulkanLayerController {
     absl::MutexLock lock{&vulkan_layer_producer_mutex_};
     if (vulkan_layer_producer_ == nullptr) {
       vulkan_layer_producer_ = std::make_unique<VulkanLayerProducerImpl>();
-      vulkan_layer_producer_->BringUp(orbit_producer_side_channel::CreateProducerSideChannel());
+      // TODO: As soon as we have producer side channel for the port, use it.
+      LOG("Bringing up VulkanLayerProducer");
+      vulkan_layer_producer_->BringUp(nullptr);
       submission_tracker_.SetVulkanLayerProducer(vulkan_layer_producer_.get());
     }
   }
@@ -428,8 +451,8 @@ class VulkanLayerController {
   void CloseVulkanLayerProducerIfNecessary() {
     absl::MutexLock lock{&vulkan_layer_producer_mutex_};
     if (vulkan_layer_producer_ != nullptr) {
-      // TODO: Only do this when DestroyInstance has been called a number of times
-      //  equal to the number of times CreateInstance was called.
+      // TODO: Only do this when DestroyInstance has been called the same number of times as
+      //  CreateInstance.
       LOG("Taking down VulkanLayerProducer");
       vulkan_layer_producer_->TakeDown();
       vulkan_layer_producer_.reset();
@@ -446,9 +469,10 @@ class VulkanLayerController {
   SubmissionTracker submission_tracker_;
   QueueManager queue_manager_;
 
+  // The number of timer query slots is chosen arbitrary such that it is large enough.
   static constexpr uint32_t kNumTimerQuerySlots = 65536;
 };
 
 }  // namespace orbit_vulkan_layer
 
-#endif  // ORBIT_VULKAN_LAYER_LAYER_LOGIC_H_
+#endif  // ORBIT_VULKAN_LAYER_VULKAN_LAYER_CONTROLLER_H_

@@ -17,12 +17,12 @@ target_sources(OrbitVulkanLayer PRIVATE
         DeviceManager.h
         DispatchTable.cpp
         DispatchTable.h
-        Main.cpp
-        VulkanLayerController.h
+        EntryPoints.cpp
         QueueManager.cpp
         QueueManager.h
         SubmissionTracker.h
         TimerQueryPool.h
+        VulkanLayerController.h
         VulkanLayerProducer.h
         VulkanLayerProducerImpl.cpp
         VulkanLayerProducerImpl.h)
