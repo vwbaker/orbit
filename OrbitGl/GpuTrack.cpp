@@ -311,7 +311,7 @@ std::string GpuTrack::GetCommandBufferTooltip(
       "<br/>"
       "<b>Submitted from thread:</b> %s [%d]<br/>"
       "<b>Time:</b> %s",
-      GOrbitApp->GetCaptureData().GetThreadName(timer_info.thread_id()), timer_info.thread_id(),
+      app_->GetCaptureData().GetThreadName(timer_info.thread_id()), timer_info.thread_id(),
       GetPrettyTime(TicksToDuration(timer_info.start(), timer_info.end())).c_str());
 }
 std::string GpuTrack::GetDebugMarkerTooltip(
@@ -327,7 +327,7 @@ std::string GpuTrack::GetDebugMarkerTooltip(
       "<b>Marker text:</b> %s<br/>"
       "<b>Submitted from thread:</b> %s [%d]<br/>"
       "<b>Time:</b> %s",
-      marker_text, GOrbitApp->GetCaptureData().GetThreadName(timer_info.thread_id()),
+      marker_text, app_->GetCaptureData().GetThreadName(timer_info.thread_id()),
       timer_info.thread_id(),
       GetPrettyTime(TicksToDuration(timer_info.start(), timer_info.end())).c_str());
 }
