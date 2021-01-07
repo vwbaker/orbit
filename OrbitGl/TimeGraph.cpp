@@ -249,6 +249,8 @@ void TimeGraph::ProcessTimer(const TimerInfo& timer_info, const FunctionInfo* fu
     ProcessOrbitFunctionTimer(function->orbit_type(), timer_info);
   }
 
+  // TODO (b/175869409): Change the way to create and get the tracks. Move this part to
+  // TrackManager.
   switch (timer_info.type()) {
     case TimerInfo::kGpuActivity: {
       uint64_t timeline_hash = timer_info.timeline_hash();
@@ -269,6 +271,9 @@ void TimeGraph::ProcessTimer(const TimerInfo& timer_info, const FunctionInfo* fu
       break;
     }
     case TimerInfo::kFrame: {
+      if (function == nullptr) {
+        break;
+      }
       FrameTrack* track = track_manager_->GetOrCreateFrameTrack(*function);
       track->OnTimer(timer_info);
       break;
@@ -278,6 +283,9 @@ void TimeGraph::ProcessTimer(const TimerInfo& timer_info, const FunctionInfo* fu
       break;
     }
     case TimerInfo::kCoreActivity: {
+      // TODO(b/176962090): We need to create the `ThreadTrack` here even we don't use it, as we
+      //  don't create it on new callstack events, yet.
+      track_manager_->GetOrCreateThreadTrack(timer_info.thread_id());
       SchedulerTrack* track = track_manager_->GetOrCreateSchedulerTrack();
       track->OnTimer(timer_info);
       if (GetNumCores() <= static_cast<uint32_t>(timer_info.processor())) {
