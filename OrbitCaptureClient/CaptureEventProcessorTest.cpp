@@ -18,8 +18,15 @@ using orbit_grpc_protos::AddressInfo;
 using orbit_grpc_protos::Callstack;
 using orbit_grpc_protos::CallstackSample;
 using orbit_grpc_protos::CaptureEvent;
+using orbit_grpc_protos::Color;
 using orbit_grpc_protos::FunctionCall;
+using orbit_grpc_protos::GpuCommandBuffer;
+using orbit_grpc_protos::GpuDebugMarker;
+using orbit_grpc_protos::GpuDebugMarkerBeginInfo;
 using orbit_grpc_protos::GpuJob;
+using orbit_grpc_protos::GpuQueueSubmission;
+using orbit_grpc_protos::GpuQueueSubmissionMetaInfo;
+using orbit_grpc_protos::GpuSubmitInfo;
 using orbit_grpc_protos::InternedCallstack;
 using orbit_grpc_protos::InternedString;
 using orbit_grpc_protos::InternedTracepointInfo;
@@ -513,6 +520,87 @@ TEST(DISABLED_CaptureEventProcessor, CanHandleGpuJobs) {
   EXPECT_EQ(hw_excecution_timer.type(), TimerInfo::kGpuActivity);
   EXPECT_EQ(hw_excecution_timer.timeline_hash(), actual_timeline_key);
   EXPECT_EQ(hw_excecution_timer.user_data_key(), actual_hw_execution_key);
+}
+
+TEST(CaptureEventProcessor, CanHandleGpuSubmissionAfterGpuJob) {
+  MockCaptureListener listener;
+  CaptureEventProcessor event_processor(&listener);
+
+  CaptureEvent gpu_job_event;
+  GpuJob* gpu_job = gpu_job_event.mutable_gpu_job();
+  gpu_job->set_pid(1);
+  gpu_job->set_tid(2);
+  gpu_job->set_context(3);
+  gpu_job->set_seqno(4);
+  gpu_job->set_timeline("timeline");
+  gpu_job->set_depth(3);
+  gpu_job->set_amdgpu_cs_ioctl_time_ns(10);
+  gpu_job->set_amdgpu_sched_run_job_time_ns(20);
+  gpu_job->set_gpu_hardware_start_time_ns(30);
+  gpu_job->set_dma_fence_signaled_time_ns(40);
+
+  CaptureEvent marker_string_event;
+  InternedString* marker_string = marker_string_event.mutable_interned_string();
+  marker_string->set_key(42);
+  marker_string->set_intern("marker");
+
+  CaptureEvent queue_submission_event;
+  GpuQueueSubmission* submission = queue_submission_event.mutable_gpu_queue_submission();
+  GpuQueueSubmissionMetaInfo* meta_info = submission->mutable_meta_info();
+  meta_info->set_tid(2);
+  meta_info->set_pre_submission_cpu_timestamp(9);
+  meta_info->set_post_submission_cpu_timestamp(11);
+
+  GpuSubmitInfo* submit_info = submission->add_submit_infos();
+  GpuCommandBuffer* command_buffer = submit_info->add_command_buffers();
+  command_buffer->set_begin_gpu_timestamp_ns(115);
+  command_buffer->set_end_gpu_timestamp_ns(124);
+
+  submission->set_num_begin_markers(1);
+  GpuDebugMarker* debug_marker = submission->add_completed_markers();
+  Color* color = debug_marker->mutable_color();
+  color->set_alpha(1.f);
+  color->set_red(0.75f);
+  color->set_green(0.5f);
+  color->set_blue(0.25f);
+  debug_marker->set_depth(1);
+  debug_marker->set_text_key(42);
+  GpuDebugMarkerBeginInfo* begin_marker = debug_marker->mutable_begin_marker();
+  GpuQueueSubmissionMetaInfo* meta_info_copy = begin_marker->mutable_meta_info();
+  meta_info_copy->CopyFrom(*meta_info);
+  begin_marker->set_gpu_timestamp_ns(116);
+  debug_marker->set_end_gpu_timestamp_ns(121);
+
+  EXPECT_CALL(listener, OnKeyAndString(_, "timeline")).Times(1);
+  EXPECT_CALL(listener, OnKeyAndString(_, "sw queue")).Times(1);
+  EXPECT_CALL(listener, OnKeyAndString(_, "hw queue")).Times(1);
+  EXPECT_CALL(listener, OnKeyAndString(_, "hw execution")).Times(1);
+
+  uint64_t actual_marker_timeline_key;
+  EXPECT_CALL(listener, OnKeyAndString(_, "timeline_marker"))
+      .Times(1)
+      .WillOnce(SaveArg<0>(&actual_marker_timeline_key));
+  uint64_t actual_command_buffer_key;
+  EXPECT_CALL(listener, OnKeyAndString(_, "command buffer"))
+      .Times(1)
+      .WillOnce(SaveArg<0>(&actual_command_buffer_key));
+  uint64_t actual_marker_key;
+  EXPECT_CALL(listener, OnKeyAndString(_, "marker"))
+      .Times(1)
+      .WillOnce(SaveArg<0>(&actual_marker_key));
+
+  TimerInfo sw_queue_timer;
+  TimerInfo hw_queue_timer;
+  TimerInfo hw_excecution_timer;
+  EXPECT_CALL(listener, OnTimer)
+      .Times(3)
+      .WillOnce(SaveArg<0>(&sw_queue_timer))
+      .WillOnce(SaveArg<0>(&hw_queue_timer))
+      .WillOnce(SaveArg<0>(&hw_excecution_timer));
+
+  event_processor.ProcessEvent(gpu_job_event);
+  event_processor.ProcessEvent(marker_string_event);
+  event_processor.ProcessEvent(queue_submission_event);
 }
 
 TEST(CaptureEventProcessor, CanHandleThreadStateSlices) {

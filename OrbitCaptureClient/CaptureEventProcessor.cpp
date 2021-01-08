@@ -604,7 +604,7 @@ void CaptureEventProcessor::ProcessGpuDebugMarkers(
       }
 
       // FIXME: If we receive the submissions out of order (which might actually happen) and the
-      //  begin marker origins from a different submission (very uncommon, bust still allowed by the
+      //  begin marker origins from a different submission (very uncommon, but still allowed by the
       //  specification), we may end up in forgetting this submission.
       if (matching_begin_submission != nullptr) {
         know_begin_submission = true;
