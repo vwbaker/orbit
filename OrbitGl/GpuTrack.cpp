@@ -26,19 +26,19 @@ std::string MapGpuTimelineToTrackLabel(std::string_view timeline) {
   std::string label;
   if (timeline.rfind("gfx", 0) == 0) {
     if (timeline.find("_marker") != std::string::npos) {
-      return absl::StrFormat("Graphics queue Debug Markers (%s)", timeline);
+      return absl::StrFormat("Graphics queue debug markers (%s)", timeline);
     }
     return absl::StrFormat("Graphics queue (%s)", timeline);
   }
   if (timeline.rfind("sdma", 0) == 0) {
     if (timeline.find("_marker") != std::string::npos) {
-      return absl::StrFormat("Transfer queue Debug Markers (%s)", timeline);
+      return absl::StrFormat("Transfer queue debug markers (%s)", timeline);
     }
     return absl::StrFormat("Transfer queue (%s)", timeline);
   }
   if (timeline.rfind("comp", 0) == 0) {
     if (timeline.find("_marker") != std::string::npos) {
-      return absl::StrFormat("Compute queue Debug Markers (%s)", timeline);
+      return absl::StrFormat("Compute queue debug markers (%s)", timeline);
     }
     return absl::StrFormat("Compute queue (%s)", timeline);
   }
@@ -56,7 +56,7 @@ GpuTrack::GpuTrack(TimeGraph* time_graph, StringManager* string_manager, uint64_
     : TimerTrack(time_graph, app) {
   text_renderer_ = time_graph->GetTextRenderer();
   timeline_hash_ = timeline_hash;
-  string_manager_ = std::move(string_manager);
+  string_manager_ = string_manager;
 
   // Gpu tracks are collapsed by default.
   collapse_toggle_->SetState(TriangleToggle::State::kCollapsed,
@@ -64,6 +64,9 @@ GpuTrack::GpuTrack(TimeGraph* time_graph, StringManager* string_manager, uint64_
 }
 
 void GpuTrack::OnTimer(const orbit_client_protos::TimerInfo& timer_info) {
+  // In case of having command buffer timers, we need to double the depth of the GPU timers (as we
+  // are drawing the corresponding command buffer timers below them). Therefore, we watch out for
+  // those timers.
   if (timer_info.type() == TimerInfo::kGpuCommandBuffer) {
     has_vulkan_layer_command_buffer_timers_ = true;
   }
@@ -89,14 +92,16 @@ Color GpuTrack::GetTimerColor(const TimerInfo& timer_info, bool is_selected) con
   if (!IsTimerActive(timer_info)) {
     return kInactiveColor;
   }
-
   if (timer_info.has_color()) {
-    return Color(static_cast<uint8_t>(timer_info.color().red() * 255),
-                 static_cast<uint8_t>(timer_info.color().green() * 255),
+    CHECK(timer_info.color().red() < 256);
+    CHECK(timer_info.color().green() < 256);
+    CHECK(timer_info.color().blue() < 256);
+    CHECK(timer_info.color().alpha() < 256);
+    return Color(static_cast<uint8_t>(timer_info.color().red()),
+                 static_cast<uint8_t>(timer_info.color().green()),
                  static_cast<uint8_t>(timer_info.color().blue()),
                  static_cast<uint8_t>(timer_info.color().alpha()));
   }
-
   if (timer_info.type() == TimerInfo::kGpuDebugMarker) {
     std::string marker_text = string_manager_->Get(timer_info.user_data_key()).value_or("");
     return TimeGraph::GetColor(marker_text);
@@ -142,24 +147,29 @@ float GpuTrack::GetYFromTimer(const TimerInfo& timer_info) const {
   CHECK(timer_info.type() == TimerInfo::kGpuActivity ||
         timer_info.type() == TimerInfo::kGpuCommandBuffer);
 
+  // Command buffer timers are drawn underneath the matching "hw execution" timer, which has the
+  // same depth value as the command buffer timer. Therefore, we need to double the depth in the
+  // case that we have command buffer timers.
   if (has_vulkan_layer_command_buffer_timers_) {
     adjusted_depth *= 2.f;
   }
 
   float gap_space = adjusted_depth * layout.GetSpaceBetweenGpuDepths();
+
+  // Command buffer timers have the same depth value as their matching "hw execution" timer.
+  // As we want to draw command buffers underneath the hw execution timers, we need to increase
+  // the depth by one.
   if (timer_info.type() == TimerInfo::kGpuCommandBuffer) {
-    ++adjusted_depth;
+    adjusted_depth += 1.f;
   }
   return pos_[1] - layout.GetTextBoxHeight() * (adjusted_depth + 1.f) - gap_space;
 }
 
-// When track is collapsed, only draw "hardware execution" timers.
+// When track is collapsed, only draw "hardware execution" timers and "debug markers".
 bool GpuTrack::TimerFilter(const TimerInfo& timer_info) const {
   if (collapse_toggle_->IsCollapsed()) {
     std::string gpu_stage = string_manager_->Get(timer_info.user_data_key()).value_or("");
-    if (gpu_stage != kHwExecutionString && timer_info.type() != TimerInfo::kGpuDebugMarker) {
-      return false;
-    }
+    return gpu_stage == kHwExecutionString || timer_info.type() == TimerInfo::kGpuDebugMarker;
   }
   return true;
 }
@@ -305,8 +315,8 @@ std::string GpuTrack::GetCommandBufferTooltip(
   return absl::StrFormat(
       "<b>Command Buffer Execution</b><br/>"
       "<i>At `vkBeginCommandBuffer` and `vkEndCommandBuffer` `vkCmdWriteTimestamp`s have been "
-      "inserted. The gpu timestamps get aligned with the corresponding submit's hardware "
-      "execution </i>"
+      "inserted. The GPU timestamps get aligned with the corresponding hardware execution of the"
+      "submission.</i>"
       "<br/>"
       "<br/>"
       "<b>Submitted from thread:</b> %s [%d]<br/>"
@@ -314,14 +324,15 @@ std::string GpuTrack::GetCommandBufferTooltip(
       app_->GetCaptureData().GetThreadName(timer_info.thread_id()), timer_info.thread_id(),
       GetPrettyTime(TicksToDuration(timer_info.start(), timer_info.end())).c_str());
 }
+
 std::string GpuTrack::GetDebugMarkerTooltip(
     const orbit_client_protos::TimerInfo& timer_info) const {
   std::string marker_text = string_manager_->Get(timer_info.user_data_key()).value_or("");
   return absl::StrFormat(
       "<b>Vulkan Debug Marker</b><br/>"
       "<i>At the marker's begin and end `vkCmdWriteTimestamp`s have been "
-      "inserted. The gpu timestamps get aligned with the corresponding submit's hardware "
-      "execution </i>"
+      "inserted. The GPU timestamps get aligned with the corresponding hardware execution of the"
+      "submission.</i>"
       "<br/>"
       "<br/>"
       "<b>Marker text:</b> %s<br/>"

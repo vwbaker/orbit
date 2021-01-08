@@ -70,7 +70,7 @@ void CaptureEventProcessor::ProcessEvent(const CaptureEvent& event) {
     case CaptureEvent::kGpuQueueSubmission:
       ProcessGpuQueueSubmission(event.gpu_queue_submission());
       break;
-    case CaptureEvent::kModulesUpdateEvent:
+    case CaptureEvent::kModuleUpdateEvent:
       // TODO (http://b/168797897): Process module update events
       break;
     case CaptureEvent::EVENT_NOT_SET:

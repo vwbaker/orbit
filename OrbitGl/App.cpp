@@ -201,11 +201,11 @@ void OrbitApp::OnCaptureComplete() {
   PostProcessedSamplingData post_processed_sampling_data =
       orbit_client_model::CreatePostProcessedSamplingData(*GetCaptureData().GetCallstackData(),
                                                           GetCaptureData());
-  RefreshFrameTracks();
 
   main_thread_executor_->Schedule(
       [this, sampling_profiler = std::move(post_processed_sampling_data)]() mutable {
         ORBIT_SCOPE("OnCaptureComplete");
+        RefreshFrameTracks();
         GetMutableCaptureData().set_post_processed_sampling_data(sampling_profiler);
         RefreshCaptureView();
 
@@ -839,14 +839,16 @@ bool OrbitApp::StartCapture() {
   }
 
   TracepointInfoSet selected_tracepoints = data_manager_->selected_tracepoints();
-  bool enable_introspection = absl::GetFlag(FLAGS_devmode);
   UserDefinedCaptureData user_defined_capture_data =
       data_manager_->mutable_user_defined_capture_data();
+  bool collect_thread_states = data_manager_->collect_thread_states();
+  bool enable_introspection = absl::GetFlag(FLAGS_devmode);
 
   CHECK(capture_client_ != nullptr);
   ErrorMessageOr<void> result = capture_client_->StartCapture(
       thread_pool_.get(), *process, *module_manager_, std::move(selected_functions_map),
-      std::move(selected_tracepoints), std::move(user_defined_capture_data), enable_introspection);
+      std::move(selected_tracepoints), std::move(user_defined_capture_data), collect_thread_states,
+      enable_introspection);
 
   if (result.has_error()) {
     SendErrorToUi("Error starting capture", result.error().message());
@@ -1390,6 +1392,10 @@ void OrbitApp::UpdateProcessAndModuleList(int32_t pid) {
   });
 }
 
+void OrbitApp::SetCollectThreadStates(bool collect_thread_states) {
+  data_manager_->set_collect_thread_states(collect_thread_states);
+}
+
 void OrbitApp::SelectFunction(const orbit_client_protos::FunctionInfo& func) {
   LOG("Selected %s (address_=0x%" PRIx64 ", loaded_module_path_=%s)", func.pretty_name(),
       func.address(), func.loaded_module_path());
@@ -1685,8 +1691,11 @@ void OrbitApp::AddFrameTrack(const FunctionInfo& function) {
   // serialized).
   const FunctionStats& stats = GetCaptureData().GetFunctionStatsOrDefault(function);
   if (stats.count() > 1) {
+    frame_track_online_processor_.AddFrameTrack(GetCaptureData(), function);
     GetMutableCaptureData().EnableFrameTrack(function);
-    AddFrameTrackTimers(function);
+    if (!IsCapturing()) {
+      AddFrameTrackTimers(function);
+    }
   } else {
     CHECK(empty_frame_track_warning_callback_);
     empty_frame_track_warning_callback_(function.pretty_name());
@@ -1697,10 +1706,12 @@ void OrbitApp::RemoveFrameTrack(const FunctionInfo& function) {
   // Removing a frame track requires that the frame track is disabled in the settings
   // (what is stored in DataManager).
   CHECK(!IsFrameTrackEnabled(function));
+  CHECK(std::this_thread::get_id() == main_thread_id_);
 
   // We can only remove the frame track from the capture data if we have capture data and
   // the frame track is actually enabled in the capture data.
   if (HasCaptureData() && GetCaptureData().IsFrameTrackEnabled(function)) {
+    frame_track_online_processor_.RemoveFrameTrack(GetCaptureData(), function);
     GetMutableCaptureData().DisableFrameTrack(function);
     GCurrentTimeGraph->RemoveFrameTrack(function);
   }
@@ -1716,6 +1727,7 @@ bool OrbitApp::HasFrameTrackInCaptureData(const FunctionInfo& function) const {
 
 void OrbitApp::RefreshFrameTracks() {
   CHECK(HasCaptureData());
+  CHECK(std::this_thread::get_id() == main_thread_id_);
   for (const auto& function :
        GetCaptureData().user_defined_capture_data().frame_track_functions()) {
     GCurrentTimeGraph->RemoveFrameTrack(function);

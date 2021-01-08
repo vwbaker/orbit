@@ -92,13 +92,7 @@ class OrbitMainWindow : public QMainWindow {
 
   void RestoreDefaultTabLayout();
 
-  // TODO(170468590): [ui beta] When out of ui beta, this can return TargetConfiguration (without
-  // std::optional)
-  std::optional<orbit_qt::TargetConfiguration> ClearTargetConfiguration() {
-    std::optional<orbit_qt::TargetConfiguration> result = std::move(target_configuration_);
-    target_configuration_ = std::nullopt;
-    return result;
-  }
+  std::optional<orbit_qt::TargetConfiguration> ClearTargetConfiguration();
 
  protected:
   void closeEvent(QCloseEvent* event) override;
@@ -124,6 +118,7 @@ class OrbitMainWindow : public QMainWindow {
   void on_actionSave_Capture_triggered();
   void on_actionOpen_Capture_triggered();
   void on_actionClear_Capture_triggered();
+  void on_actionCaptureOptions_triggered();
   void on_actionHelp_triggered();
   void on_actionIntrospection_triggered();
 
@@ -146,6 +141,8 @@ class OrbitMainWindow : public QMainWindow {
   void SetupHintFrame();
   void SetupTargetLabel();
 
+  void SetupAccessibleNamesForAutomation();
+
   void SaveCurrentTabLayoutAsDefaultInMemory();
 
   void CreateTabBarContextMenu(QTabWidget* tab_widget, int tab_index, const QPoint pos);
@@ -162,6 +159,11 @@ class OrbitMainWindow : public QMainWindow {
   // TODO(170468590): [ui beta] When out of ui beta, this is not needed anymore (is done by
   // ProfilingTargetDialog)
   void SetupGrpcAndProcessManager(std::string grpc_server_address);
+
+  void OnProcessListUpdated(std::vector<orbit_grpc_protos::ProcessInfo> processes);
+
+  static const QString kCollectThreadStatesSettingKey;
+  void LoadCaptureOptionsIntoApp();
 
  private:
   std::unique_ptr<MainThreadExecutor> main_thread_executor_;
@@ -195,6 +197,10 @@ class OrbitMainWindow : public QMainWindow {
 
   // TODO(170468590): [ui beta] When out of ui beta, this does not need to be an optional anymore
   std::optional<orbit_qt::TargetConfiguration> target_configuration_;
+
+  enum class TargetProcessState { kRunning, kEnded };
+
+  TargetProcessState target_process_state_ = TargetProcessState::kRunning;
 };
 
 #endif  // ORBIT_QT_ORBIT_MAIN_WINDOW_H_

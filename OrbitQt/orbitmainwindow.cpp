@@ -60,6 +60,7 @@
 
 #include "App.h"
 #include "CallTreeWidget.h"
+#include "CaptureOptionsDialog.h"
 #include "Connections.h"
 #include "DataViewFactory.h"
 #include "GlCanvas.h"
@@ -118,6 +119,11 @@ constexpr int kHintFramePosX = 21;
 constexpr int kHintFramePosY = 47;
 constexpr int kHintFrameWidth = 140;
 constexpr int kHintFrameHeight = 45;
+
+const QString kTargetLabelDefaultStyleSheet = "#TargetLabel { color: %1; }";
+const QString kTargetLabelColorConnected = "#66BB6A";
+const QString kTargetLabelColorFileTarget = "#BDBDBD";
+const QString kTargetLabelColorTargetProcessDied = "orange";
 }  // namespace
 
 OrbitMainWindow::OrbitMainWindow(orbit_qt::TargetConfiguration target_configuration,
@@ -184,6 +190,8 @@ OrbitMainWindow::OrbitMainWindow(orbit_qt::TargetConfiguration target_configurat
   }
 
   UpdateCaptureStateDependentWidgets();
+
+  LoadCaptureOptionsIntoApp();
 }
 
 OrbitMainWindow::OrbitMainWindow(orbit_qt::ServiceDeployManager* service_deploy_manager,
@@ -220,6 +228,8 @@ OrbitMainWindow::OrbitMainWindow(orbit_qt::ServiceDeployManager* service_deploy_
 
   SaveCurrentTabLayoutAsDefaultInMemory();
   UpdateCaptureStateDependentWidgets();
+
+  LoadCaptureOptionsIntoApp();
 }
 
 void OrbitMainWindow::SetupMainWindow(uint32_t font_size) {
@@ -425,6 +435,8 @@ void OrbitMainWindow::SetupMainWindow(uint32_t font_size) {
   ui->MainTabWidget->tabBar()->installEventFilter(this);
   ui->RightTabWidget->tabBar()->installEventFilter(this);
 
+  SetupAccessibleNamesForAutomation();
+
   setWindowTitle({});
   std::filesystem::path icon_file_name = (orbit_base::GetExecutableDir() / "orbit.ico");
   this->setWindowIcon(QIcon(QString::fromStdString(icon_file_name.string())));
@@ -520,6 +532,14 @@ void OrbitMainWindow::SetupTargetLabel() {
   });
 }
 
+void OrbitMainWindow::SetupAccessibleNamesForAutomation() {
+  for (QTabWidget* tab_widget : {ui->MainTabWidget, ui->RightTabWidget}) {
+    for (int i = 0; i < tab_widget->count(); ++i) {
+      tab_widget->widget(i)->setAccessibleName(tab_widget->widget(i)->objectName());
+    }
+  }
+}
+
 void OrbitMainWindow::SaveCurrentTabLayoutAsDefaultInMemory() {
   default_tab_layout_.clear();
   std::array<QTabWidget*, 2> tab_widgets = {ui->MainTabWidget, ui->RightTabWidget};
@@ -582,6 +602,14 @@ void OrbitMainWindow::UpdateCaptureStateDependentWidgets() {
   CaptureClient::State capture_state = app_->GetCaptureState();
   const bool is_capturing = capture_state != CaptureClient::State::kStopped;
 
+  // The detection mechanism is only implemented for the new UI, so we maintain
+  // the old behaviour for the old UI and assume the target process is always running.
+  // TODO (170468590): [ui beta] This can be renamed to is_target_process_running when
+  // the feature flag gets removed.
+  const bool assume_target_process_is_running =
+      (!absl::GetFlag(FLAGS_enable_ui_beta)) ||
+      target_process_state_ == TargetProcessState::kRunning;
+
   if (!absl::GetFlag(FLAGS_enable_ui_beta)) {
     set_tab_enabled(ui->HomeTab, true);
     ui->HomeTab->setEnabled(!is_capturing);
@@ -596,10 +624,12 @@ void OrbitMainWindow::UpdateCaptureStateDependentWidgets() {
   set_tab_enabled(ui->selectionTopDownTab, has_selection);
   set_tab_enabled(ui->selectionBottomUpTab, has_selection);
 
-  ui->actionToggle_Capture->setEnabled(capture_state == CaptureClient::State::kStarted ||
-                                       capture_state == CaptureClient::State::kStopped);
+  ui->actionToggle_Capture->setEnabled(
+      capture_state == CaptureClient::State::kStarted ||
+      (capture_state == CaptureClient::State::kStopped && assume_target_process_is_running));
   ui->actionToggle_Capture->setIcon(is_capturing ? icon_stop_capture_ : icon_start_capture_);
   ui->actionClear_Capture->setEnabled(!is_capturing && has_data);
+  ui->actionCaptureOptions->setEnabled(!is_capturing);
   ui->actionOpen_Capture->setEnabled(!is_capturing);
   ui->actionSave_Capture->setEnabled(!is_capturing);
   ui->actionOpen_Preset->setEnabled(!is_capturing && is_connected);
@@ -681,6 +711,9 @@ OrbitMainWindow::~OrbitMainWindow() {
   ui->TracepointsList->Deinitialize();
   ui->CallStackView->Deinitialize();
   ui->liveFunctions->Deinitialize();
+
+  ui->samplingReport->Deinitialize();
+  ui->selectionReport->Deinitialize();
 
   if (absl::GetFlag(FLAGS_devmode)) {
     ui->debugOpenGLWidget->Deinitialize(this);
@@ -937,6 +970,28 @@ void OrbitMainWindow::on_actionToggle_Capture_triggered() { app_->ToggleCapture(
 
 void OrbitMainWindow::on_actionClear_Capture_triggered() { app_->ClearCapture(); }
 
+const QString OrbitMainWindow::kCollectThreadStatesSettingKey{"CollectThreadStates"};
+
+void OrbitMainWindow::LoadCaptureOptionsIntoApp() {
+  QSettings settings;
+  app_->SetCollectThreadStates(settings.value(kCollectThreadStatesSettingKey, false).toBool());
+}
+
+void OrbitMainWindow::on_actionCaptureOptions_triggered() {
+  QSettings settings;
+
+  orbit_qt::CaptureOptionsDialog dialog{this};
+  dialog.SetCollectThreadStates(settings.value(kCollectThreadStatesSettingKey, false).toBool());
+
+  int result = dialog.exec();
+  if (result != QDialog::Accepted) {
+    return;
+  }
+
+  settings.setValue(kCollectThreadStatesSettingKey, dialog.GetCollectThreadStates());
+  LoadCaptureOptionsIntoApp();
+}
+
 void OrbitMainWindow::on_actionHelp_triggered() { app_->ToggleDrawHelp(); }
 
 void OrbitMainWindow::on_actionIntrospection_triggered() {
@@ -1165,11 +1220,19 @@ void OrbitMainWindow::SetTarget(const orbit_qt::StadiaTarget& target) {
   app_->SetGrpcChannel(connection->GetGrpcChannel());
   app_->SetProcessManager(target.GetProcessManager());
   app_->SetTargetProcess(target.GetProcess());
-  // TODO (b/173011168): Color should not be defined inline. Replace with defined "good color"
-  // (green).
-  target_label_->setStyleSheet("#TargetLabel { color: #66BB6A; }");
+
+  target_label_->setStyleSheet(kTargetLabelDefaultStyleSheet.arg(kTargetLabelColorConnected));
   target_label_->setText(QString::fromStdString(target.GetProcess()->name()) + " @ " +
                          target.GetConnection()->GetInstance().display_name);
+
+  using ProcessInfo = orbit_grpc_protos::ProcessInfo;
+  target.GetProcessManager()->SetProcessListUpdateListener([&](std::vector<ProcessInfo> processes) {
+    // This lambda is called from a background-thread, so we use QMetaObject::invokeMethod
+    // to execute our logic on the main thread.
+    QMetaObject::invokeMethod(this, [&, processes = std::move(processes)]() {
+      OnProcessListUpdated(std::move(processes));
+    });
+  });
 }
 
 void OrbitMainWindow::SetTarget(const orbit_qt::LocalTarget& target) {
@@ -1177,16 +1240,23 @@ void OrbitMainWindow::SetTarget(const orbit_qt::LocalTarget& target) {
   app_->SetGrpcChannel(connection->GetGrpcChannel());
   app_->SetProcessManager(target.GetProcessManager());
   app_->SetTargetProcess(target.GetProcess());
-  // TODO (b/173011168): Color should not be defined inline. Replace with defined "good color"
-  // (green).
-  target_label_->setStyleSheet("#TargetLabel { color: #66BB6A; }");
+
+  target_label_->setStyleSheet(kTargetLabelDefaultStyleSheet.arg(kTargetLabelColorConnected));
   target_label_->setText(QString("Local target: ") +
                          QString::fromStdString(target.GetProcess()->name()));
+
+  using ProcessInfo = orbit_grpc_protos::ProcessInfo;
+  target.GetProcessManager()->SetProcessListUpdateListener([&](std::vector<ProcessInfo> processes) {
+    // This lambda is called from a background-thread, so we use QMetaObject::invokeMethod
+    // to execute our logic on the main thread.
+    QMetaObject::invokeMethod(this, [&, processes = std::move(processes)]() {
+      OnProcessListUpdated(std::move(processes));
+    });
+  });
 }
 
 void OrbitMainWindow::SetTarget(const orbit_qt::FileTarget& target) {
-  // TODO (b/173011168): Color should not be defined inline. Replace with defined color.
-  target_label_->setStyleSheet("#TargetLabel { color: #BDBDBD; }");
+  target_label_->setStyleSheet(kTargetLabelColorFileTarget.arg(kTargetLabelColorFileTarget));
   target_label_->setText(QString::fromStdString(target.GetCaptureFilePath().filename().string()));
 }
 
@@ -1206,4 +1276,40 @@ void OrbitMainWindow::SetupGrpcAndProcessManager(std::string grpc_server_address
 
   app_->SetGrpcChannel(std::move(grpc_channel));
   app_->SetProcessManager(process_manager_.get());
+}
+
+void OrbitMainWindow::OnProcessListUpdated(std::vector<orbit_grpc_protos::ProcessInfo> processes) {
+  const auto is_current_process = [this](const auto& process) {
+    const ProcessData* const target_process = app_->GetTargetProcess();
+    return target_process != nullptr && process.pid() == app_->GetTargetProcess()->pid();
+  };
+  const auto current_process = std::find_if(processes.begin(), processes.end(), is_current_process);
+  const bool process_died = current_process == processes.end();
+
+  if (process_died) {
+    target_label_->setStyleSheet(
+        kTargetLabelDefaultStyleSheet.arg(kTargetLabelColorTargetProcessDied));
+    target_label_->setToolTip("The process ended on the instance");
+    target_process_state_ = TargetProcessState::kEnded;
+  } else {
+    target_label_->setStyleSheet(kTargetLabelDefaultStyleSheet.arg(kTargetLabelColorConnected));
+    target_label_->setToolTip({});
+    target_process_state_ = TargetProcessState::kRunning;
+  }
+  UpdateCaptureStateDependentWidgets();
+}
+
+// TODO(170468590): [ui beta] When out of ui beta, this can return TargetConfiguration (without
+// std::optional)
+std::optional<orbit_qt::TargetConfiguration> OrbitMainWindow::ClearTargetConfiguration() {
+  using StadiaTarget = orbit_qt::StadiaTarget;
+  if (target_configuration_.has_value() &&
+      std::holds_alternative<StadiaTarget>(target_configuration_.value())) {
+    std::get<StadiaTarget>(target_configuration_.value())
+        .GetProcessManager()
+        ->SetProcessListUpdateListener(nullptr);
+  }
+  std::optional<orbit_qt::TargetConfiguration> result = std::move(target_configuration_);
+  target_configuration_ = std::nullopt;
+  return result;
 }

@@ -13,6 +13,7 @@ target_sources(
   PRIVATE AccessibilityAdapter.h
           CallTreeViewItemModel.h
           CallTreeWidget.h
+          CaptureOptionsDialog.h
           Connections.h
           ConnectToStadiaWidget.h
           CopyKeySequenceEnabledTreeView.h
@@ -27,7 +28,6 @@ target_sources(
           orbitdisassemblydialog.h
           orbiteventiterator.h
           orbitglwidget.h
-          orbitglwidgetwithheader.h
           orbitlivefunctions.h
           orbitmainwindow.h
           orbitsamplingreport.h
@@ -52,6 +52,8 @@ target_sources(
           CallTreeViewItemModel.cpp
           CallTreeWidget.cpp
           CallTreeWidget.ui
+          CaptureOptionsDialog.cpp
+          CaptureOptionsDialog.ui
           ConnectToStadiaWidget.cpp
           ConnectToStadiaWidget.ui
           Error.cpp
@@ -70,8 +72,6 @@ target_sources(
           orbiteventiterator.cpp
           orbiteventiterator.ui
           orbitglwidget.cpp
-          orbitglwidgetwithheader.cpp
-          orbitglwidgetwithheader.ui
           orbitlivefunctions.cpp
           orbitlivefunctions.ui
           orbitmainwindow.cpp
