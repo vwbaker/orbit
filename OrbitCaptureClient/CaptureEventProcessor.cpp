@@ -649,10 +649,10 @@ void CaptureEventProcessor::ProcessGpuDebugMarkers(
 
     if (completed_marker.has_color()) {
       Color* color = marker_timer.mutable_color();
-      color->set_red(completed_marker.color().red());
-      color->set_green(completed_marker.color().green());
-      color->set_blue(completed_marker.color().blue());
-      color->set_alpha(completed_marker.color().alpha());
+      color->set_red(static_cast<uint32_t>(completed_marker.color().red() * 255));
+      color->set_green(static_cast<uint32_t>(completed_marker.color().green() * 255));
+      color->set_blue(static_cast<uint32_t>(completed_marker.color().blue() * 255));
+      color->set_alpha(static_cast<uint32_t>(completed_marker.color().alpha() * 255));
     }
     marker_timer.set_user_data_key(text_key);
     capture_listener_->OnTimer(marker_timer);
