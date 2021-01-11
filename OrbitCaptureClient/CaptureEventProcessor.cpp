@@ -580,7 +580,6 @@ void CaptureEventProcessor::ProcessGpuDebugMarkers(
   for (const auto& completed_marker : gpu_queue_submission.completed_markers()) {
     CHECK(first_command_buffer != std::nullopt);
     TimerInfo marker_timer;
-    bool know_begin_submission = false;
 
     // If we've recorded the submission that contains the begin marker, we'll retrieve this
     // submission from our mappings, and set the markers begin time accordingly.
@@ -604,34 +603,30 @@ void CaptureEventProcessor::ProcessGpuDebugMarkers(
             begin_marker_thread_id, begin_marker_post_submission_cpu_timestamp);
       }
 
-      // FIXME: If we receive the submissions out of order (which might actually happen) and the
-      //  begin marker origins from a different submission (very uncommon, but still allowed by the
-      //  specification), we may end up in forgetting this submission.
-      if (matching_begin_submission != nullptr) {
-        know_begin_submission = true;
+      // Note, we receive submissions of a single queue in order (by CPU submission time). So if
+      // there is no matching "begin submission", the "begin" was submitted before the "end" and
+      // we lost the record of the "begin's" submission (which should not happen).
+      CHECK(matching_begin_submission != nullptr);
 
-        std::optional<GpuCommandBuffer> begin_submission_first_command_buffer =
-            FindFirstCommandBuffer(*matching_begin_submission);
-        CHECK(begin_submission_first_command_buffer.has_value());
+      std::optional<GpuCommandBuffer> begin_submission_first_command_buffer =
+          FindFirstCommandBuffer(*matching_begin_submission);
+      CHECK(begin_submission_first_command_buffer.has_value());
 
-        const GpuJob* matching_begin_job = FindMatchingGpuJob(
-            begin_marker_thread_id, begin_marker_meta_info.pre_submission_cpu_timestamp(),
-            begin_marker_post_submission_cpu_timestamp);
-        CHECK(matching_begin_job != nullptr);
+      const GpuJob* matching_begin_job = FindMatchingGpuJob(
+          begin_marker_thread_id, begin_marker_meta_info.pre_submission_cpu_timestamp(),
+          begin_marker_post_submission_cpu_timestamp);
+      CHECK(matching_begin_job != nullptr);
 
-        marker_timer.set_start(completed_marker.begin_marker().gpu_timestamp_ns() +
-                               matching_begin_job->gpu_hardware_start_time_ns() -
-                               begin_submission_first_command_buffer->begin_gpu_timestamp_ns());
-        if (begin_marker_thread_id == gpu_queue_submission.meta_info().tid()) {
-          marker_timer.set_thread_id(begin_marker_thread_id);
-        }
-
-        DecrementUnprocessedBeginMarkers(begin_marker_thread_id,
-                                         begin_marker_post_submission_cpu_timestamp);
+      marker_timer.set_start(completed_marker.begin_marker().gpu_timestamp_ns() +
+                             matching_begin_job->gpu_hardware_start_time_ns() -
+                             begin_submission_first_command_buffer->begin_gpu_timestamp_ns());
+      if (begin_marker_thread_id == gpu_queue_submission.meta_info().tid()) {
+        marker_timer.set_thread_id(begin_marker_thread_id);
       }
-    }
 
-    if (!know_begin_submission) {
+      DecrementUnprocessedBeginMarkers(begin_marker_thread_id,
+                                       begin_marker_post_submission_cpu_timestamp);
+    } else {
       marker_timer.set_start(begin_capture_time_ns_);
       marker_timer.set_thread_id(-1);
     }
