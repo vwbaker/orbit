@@ -4,16 +4,24 @@
 
 #include "CaptureServiceImpl.h"
 
+#include <absl/container/flat_hash_set.h>
+#include <absl/synchronization/mutex.h>
+#include <absl/time/time.h>
+#include <pthread.h>
+#include <stdint.h>
+
+#include <algorithm>
 #include <limits>
+#include <thread>
+#include <utility>
+#include <vector>
 
 #include "CaptureEventBuffer.h"
 #include "CaptureEventSender.h"
 #include "LinuxTracingHandler.h"
 #include "OrbitBase/Logging.h"
-#include "OrbitBase/MakeUniqueForOverwrite.h"
-#include "google/protobuf/io/coded_stream.h"
-#include "google/protobuf/io/zero_copy_stream_impl.h"
-#include "google/protobuf/message.h"
+#include "OrbitBase/Tracing.h"
+#include "capture.pb.h"
 
 namespace orbit_service {
 
@@ -54,22 +62,6 @@ class SenderThreadCaptureEventBuffer final : public CaptureEventBuffer {
   ~SenderThreadCaptureEventBuffer() override { CHECK(!sender_thread_.joinable()); }
 
  private:
-  bool ReadMessage(google::protobuf::Message* message,
-                   google::protobuf::io::CodedInputStream* input) {
-    uint32_t message_size;
-    if (!input->ReadLittleEndian32(&message_size)) {
-      return false;
-    }
-
-    std::unique_ptr<char[]> buffer = make_unique_for_overwrite<char[]>(message_size);
-    if (!input->ReadRaw(buffer.get(), message_size)) {
-      return false;
-    }
-    message->ParseFromArray(buffer.get(), message_size);
-
-    return true;
-  }
-
   void SenderThread() {
     pthread_setname_np(pthread_self(), "SenderThread");
     constexpr absl::Duration kSendTimeInterval = absl::Milliseconds(20);

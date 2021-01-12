@@ -4,7 +4,8 @@
 
 #pragma once
 
-#include <OrbitBase/Logging.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #include <functional>
 #include <memory>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include "DataViewTypes.h"
+#include "OrbitBase/Logging.h"
 
 class OrbitApp;
 

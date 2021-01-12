@@ -8,6 +8,8 @@ import logging
 
 from absl import flags
 
+from pywinauto.keyboard import send_keys
+
 from core.common_controls import DataViewPanel
 from core.orbit_e2e import E2ETestCase, wait_for_condition, find_control
 
@@ -35,13 +37,15 @@ class LoadSymbols(E2ETestCase):
         _show_symbols_and_functions_tabs(self.suite.top_window())
 
         logging.info('Start loading symbols for module %s', module_search_string)
-        modules_dataview = DataViewPanel(self.find_control("Group", "DataViewPanelModules"))
+        modules_dataview = DataViewPanel(self.find_control("Group", "ModulesDataView"))
 
         logging.info('Waiting for module list to be populated...')
         wait_for_condition(lambda: modules_dataview.get_row_count() > 0, 100)
 
         logging.info('Filtering and loading')
-        modules_dataview.filter.set_edit_text(module_search_string)
+        modules_dataview.filter.set_focus()
+        modules_dataview.filter.set_edit_text('')
+        send_keys(module_search_string)
         wait_for_condition(lambda: modules_dataview.get_row_count() == 1)
         modules_dataview.get_item_at(0, 0).click_input('right')
 
@@ -51,7 +55,7 @@ class LoadSymbols(E2ETestCase):
 
         wait_for_condition(lambda: modules_dataview.get_item_at(0, 4).texts()[0] == "*")
 
-        functions_dataview = DataViewPanel(self.find_control("Group", "DataViewPanelFunctions"))
+        functions_dataview = DataViewPanel(self.find_control("Group", "FunctionsDataView"))
         wait_for_condition(lambda: functions_dataview.get_row_count() > 0)
 
 
@@ -63,13 +67,15 @@ class FilterAndHookFunction(E2ETestCase):
         _show_symbols_and_functions_tabs(self.suite.top_window())
 
         logging.info('Hooking function based on search "%s"', function_search_string)
-        functions_dataview = DataViewPanel(self.find_control("Group", "DataViewPanelFunctions"))
+        functions_dataview = DataViewPanel(self.find_control("Group", "FunctionsDataView"))
 
         logging.info('Waiting for function list to be populated...')
         wait_for_condition(lambda: functions_dataview.get_row_count() > 0, 100)
 
         logging.info('Filtering and hooking')
-        functions_dataview.filter.set_edit_text(function_search_string)
+        functions_dataview.filter.set_focus()
+        functions_dataview.filter.set_edit_text('')
+        send_keys(function_search_string)
         wait_for_condition(lambda: functions_dataview.get_row_count() == 1)
         functions_dataview.get_item_at(0, 0).click_input('right')
 
@@ -86,7 +92,7 @@ class LoadAndVerifyHelloGgpPreset(E2ETestCase):
         _show_symbols_and_functions_tabs(self.suite.top_window())
 
         self._load_presets()
-        wait_for_condition(self._try_verify_functions_are_hooked)
+        wait_for_condition(lambda: self._try_verify_functions_are_hooked)
 
         Capture().execute(self.suite)
 
@@ -95,7 +101,7 @@ class LoadAndVerifyHelloGgpPreset(E2ETestCase):
         VerifyFunctionCallCount(function_name='GgpIssueFrameToken', min_calls=30, max_calls=3000).execute(self.suite)
 
     def _load_presets(self):
-        presets_panel = DataViewPanel(self.find_control('Group', 'DataViewPanelPresets'))
+        presets_panel = DataViewPanel(self.find_control('Group', 'PresetsDataView'))
 
         draw_frame_preset_row = presets_panel.find_first_item_row('draw_frame_in_hello_ggp_1_52', 1, True)
         issue_frame_token_preset_row = presets_panel.find_first_item_row(
@@ -114,7 +120,7 @@ class LoadAndVerifyHelloGgpPreset(E2ETestCase):
 
     def _try_verify_functions_are_hooked(self):
         logging.info('Finding rows in the function list')
-        functions_panel = DataViewPanel(self.find_control('Group', 'DataViewPanelFunctions'))
+        functions_panel = DataViewPanel(self.find_control('Group', 'FunctionsDataViewD'))
         draw_frame_row = functions_panel.find_first_item_row('DrawFrame', 1)
         issue_frame_token_row = functions_panel.find_first_item_row('GgpIssueFrameToken', 1)
 

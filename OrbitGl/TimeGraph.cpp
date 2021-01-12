@@ -5,10 +5,8 @@
 #include "TimeGraph.h"
 
 #include <GteVector.h>
-#include <OrbitBase/Logging.h>
-#include <OrbitBase/Tracing.h>
+#include <absl/container/flat_hash_map.h>
 #include <absl/time/time.h>
-#include <google/protobuf/stubs/port.h>
 #include <stddef.h>
 
 #include <algorithm>
@@ -18,16 +16,23 @@
 #include "App.h"
 #include "AsyncTrack.h"
 #include "CoreUtils.h"
+#include "FrameTrack.h"
 #include "Geometry.h"
 #include "GlCanvas.h"
 #include "GlUtils.h"
+#include "GpuTrack.h"
 #include "GraphTrack.h"
 #include "ManualInstrumentationManager.h"
+#include "OrbitBase/Logging.h"
 #include "OrbitBase/ThreadConstants.h"
+#include "OrbitBase/Tracing.h"
+#include "OrbitClientData/CallstackData.h"
 #include "OrbitClientData/FunctionUtils.h"
 #include "PickingManager.h"
+#include "SchedulerTrack.h"
 #include "StringManager.h"
 #include "TextBox.h"
+#include "ThreadTrack.h"
 #include "TrackManager.h"
 #include "absl/strings/str_format.h"
 
@@ -252,7 +257,10 @@ void TimeGraph::ProcessTimer(const TimerInfo& timer_info, const FunctionInfo* fu
   // TODO (b/175869409): Change the way to create and get the tracks. Move this part to
   // TrackManager.
   switch (timer_info.type()) {
-    case TimerInfo::kGpuActivity: {
+    // All GPU timers are handled equally here.
+    case TimerInfo::kGpuActivity:
+    case TimerInfo::kGpuCommandBuffer:
+    case TimerInfo::kGpuDebugMarker: {
       uint64_t timeline_hash = timer_info.timeline_hash();
       GpuTrack* track = track_manager_->GetOrCreateGpuTrack(timeline_hash);
       track->OnTimer(timer_info);

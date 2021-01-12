@@ -9,8 +9,10 @@ import time
 
 from absl import flags
 from pywinauto.application import Application
+from pywinauto.keyboard import send_keys
 
-from core.orbit_e2e import E2ETestCase, wait_for_condition, find_control
+from core.orbit_e2e import E2ETestCase, wait_for_condition
+from core.common_controls import DataViewPanel
 
 
 flags.DEFINE_bool('enable_ui_beta', False, 'Expect Orbit to be started with the new UI')
@@ -63,24 +65,29 @@ class FilterAndSelectFirstProcess(E2ETestCase):
     """
     def _execute(self, process_filter):
         window = self.suite.top_window()
-        logging.info('Setting filter text for process list')
 
         if flags.FLAGS.enable_ui_beta:
             filter_edit = self.find_control('Edit', 'FilterProcesses')
-            process_list = window.ProcessList
+            process_list = self.find_control('Table', 'ProcessList')
         else:
-            filter_edit = self.find_control('Edit', 'Filter', parent=window.DataViewProcesses)
-            process_list = window.DataViewProcesses.DataView
+            process_data_view = DataViewPanel(self.find_control('Group', 'ProcessesDataView'))
+            filter_edit = process_data_view.filter
+            process_list = process_data_view.table
 
+        logging.info('Waiting for process list to be populated')
+        wait_for_condition(lambda: process_list.item_count() > 0, 30)
+        logging.info('Setting filter text for process list')
         if process_filter:
-            filter_edit.set_edit_text(process_filter)
+            filter_edit.set_focus()
+            filter_edit.set_edit_text('')
+            send_keys(process_filter)
         self.expect_true(process_list.item_count() > 0, 'Process list has at least one entry')
 
         if flags.FLAGS.enable_ui_beta:
             logging.info('Process selected, continuing to main window...')
-            process_list.DataItem0.double_click_input()
+            process_list.children(control_type='DataItem')[0].double_click_input()
             wait_for_main_window(self.suite.application)
             window = self.suite.top_window(True)
             self.expect_eq(window.class_name(), "OrbitMainWindow", 'Main window is visible')
         else:
-            process_list.DataItem0.click_input()
+            process_list.children(control_type='TreeItem')[0].click_input()

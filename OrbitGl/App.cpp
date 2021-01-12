@@ -22,6 +22,7 @@
 #include <cinttypes>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <fstream>
 #include <memory>
 #include <outcome.hpp>
@@ -65,6 +66,7 @@
 #include "Timer.h"
 #include "TimerChain.h"
 #include "TimerInfosIterator.h"
+#include "TrackManager.h"
 #include "capture_data.pb.h"
 #include "module.pb.h"
 #include "preset.pb.h"
@@ -73,6 +75,7 @@
 
 #ifdef _WIN32
 #include "oqpi.hpp"
+
 #define OQPI_USE_DEFAULT
 #endif
 
@@ -488,10 +491,32 @@ void OrbitApp::RenderImGui() {
   ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(25, 25, 25, 255));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
   ImGui::Begin("OrbitDebug", nullptr, ImVec2(0, 0), 1.f, window_flags);
-  capture_window_->RenderImGui();
-  if (introspection_window_) {
-    introspection_window_->RenderImGui();
+
+  if (ImGui::BeginTabBar("DebugTabBar", ImGuiTabBarFlags_None)) {
+    if (ImGui::BeginTabItem("CaptureWindow")) {
+      capture_window_->RenderImGui();
+      ImGui::EndTabItem();
+    }
+
+    if (introspection_window_) {
+      if (ImGui::BeginTabItem("Introspection")) {
+        introspection_window_->RenderImGui();
+        ImGui::EndTabItem();
+      }
+    }
+
+    if (ImGui::BeginTabItem("Misc")) {
+      static bool show_imgui_demo = false;
+      ImGui::Checkbox("Show ImGui Demo", &show_imgui_demo);
+      if (show_imgui_demo) {
+        ImGui::ShowDemoWindow();
+      }
+      ImGui::EndTabItem();
+    }
+
+    ImGui::EndTabBar();
   }
+
   ImGui::PopStyleVar();
   ImGui::PopStyleColor();
   ImGui::End();

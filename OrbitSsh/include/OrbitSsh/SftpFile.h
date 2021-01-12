@@ -5,10 +5,19 @@
 #ifndef ORBIT_SSH_SFTP_FILE_H_
 #define ORBIT_SSH_SFTP_FILE_H_
 
-#include <OrbitSsh/Error.h>
-#include <OrbitSsh/Sftp.h>
+#include <libssh2_sftp.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #include <memory>
+#include <outcome.hpp>
+#include <string>
+#include <string_view>
+#include <type_traits>
+
+#include "OrbitSsh/Error.h"
+#include "OrbitSsh/Session.h"
+#include "OrbitSsh/Sftp.h"
 
 namespace orbit_ssh {
 

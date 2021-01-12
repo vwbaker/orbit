@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include <memory>
 
 #include "CaptureWindow.h"
@@ -16,6 +18,7 @@ class IntrospectionWindow : public CaptureWindow {
   explicit IntrospectionWindow(uint32_t font_size, OrbitApp* app);
   ~IntrospectionWindow() override;
   void ToggleRecording() override;
+  void RenderImGui() override;
 
   [[nodiscard]] bool IsIntrospecting() const;
   void StartIntrospection();

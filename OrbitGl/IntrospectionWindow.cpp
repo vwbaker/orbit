@@ -5,6 +5,10 @@
 #include "IntrospectionWindow.h"
 
 #include "App.h"
+#include "OrbitBase/Logging.h"
+#include "StringManager.h"
+#include "TimeGraph.h"
+#include "capture_data.pb.h"
 
 using orbit_client_protos::TimerInfo;
 
@@ -54,6 +58,14 @@ void IntrospectionWindow::ToggleRecording() {
     StartIntrospection();
   } else {
     StopIntrospection();
+  }
+}
+
+void IntrospectionWindow::RenderImGui() {
+  CaptureWindow::RenderImGui();
+
+  if (ImGui::CollapsingHeader("IntrospectionWindow")) {
+    IMGUI_VAR_TO_TEXT(IsIntrospecting());
   }
 }
 
