@@ -549,7 +549,6 @@ void AddGpuCommandBuffer(GpuSubmitInfo* submit_info, uint64_t gpu_begin_timestam
 void AddGpuDebugMarker(GpuQueueSubmission* submission, GpuQueueSubmissionMetaInfo* begin_meta_info,
                        uint64_t marker_text_key, uint64_t begin_gpu_timestamp,
                        uint64_t end_gpu_timestamp) {
-  submission->set_num_begin_markers(submission->num_begin_markers() + 1);
   GpuDebugMarker* debug_marker = submission->add_completed_markers();
   Color* color = debug_marker->mutable_color();
   color->set_alpha(1.f);
@@ -563,6 +562,34 @@ void AddGpuDebugMarker(GpuQueueSubmission* submission, GpuQueueSubmissionMetaInf
   meta_info_copy->CopyFrom(*begin_meta_info);
   begin_marker->set_gpu_timestamp_ns(begin_gpu_timestamp);
   debug_marker->set_end_gpu_timestamp_ns(end_gpu_timestamp);
+}
+
+void ExpectCommandBufferTimerEq(const TimerInfo& actual_timer, const GpuJob& gpu_job,
+                                uint64_t cpu_begin, uint64_t cpu_end, uint64_t timeline_key,
+                                uint64_t command_buffer_key) {
+  EXPECT_EQ(actual_timer.thread_id(), gpu_job.tid());
+  EXPECT_EQ(actual_timer.depth(), gpu_job.depth());
+  EXPECT_EQ(actual_timer.start(), cpu_begin);
+  EXPECT_EQ(actual_timer.end(), cpu_end);
+  EXPECT_EQ(actual_timer.type(), TimerInfo::kGpuCommandBuffer);
+  EXPECT_EQ(actual_timer.timeline_hash(), timeline_key);
+  EXPECT_EQ(actual_timer.user_data_key(), command_buffer_key);
+}
+
+void ExpectDebugMarkerTimerEq(const TimerInfo& actual_timer, uint64_t cpu_begin, uint64_t cpu_end,
+                              int32_t thread_id, uint32_t depth, uint64_t timeline_key,
+                              uint64_t marker_key) {
+  EXPECT_EQ(actual_timer.start(), cpu_begin);
+  EXPECT_EQ(actual_timer.end(), cpu_end);
+  EXPECT_EQ(actual_timer.thread_id(), thread_id);
+  EXPECT_EQ(actual_timer.depth(), depth);
+  EXPECT_EQ(actual_timer.type(), TimerInfo::kGpuDebugMarker);
+  EXPECT_EQ(actual_timer.timeline_hash(), timeline_key);
+  EXPECT_EQ(actual_timer.user_data_key(), marker_key);
+  EXPECT_EQ(actual_timer.color().alpha(), static_cast<uint32_t>(1.f * 255));
+  EXPECT_EQ(actual_timer.color().red(), static_cast<uint32_t>(.75f * 255));
+  EXPECT_EQ(actual_timer.color().green(), static_cast<uint32_t>(.5f * 255));
+  EXPECT_EQ(actual_timer.color().blue(), static_cast<uint32_t>(.25f * 255));
 }
 
 TEST(CaptureEventProcessor, CanHandleGpuSubmissionAfterGpuJob) {
@@ -585,6 +612,7 @@ TEST(CaptureEventProcessor, CanHandleGpuSubmissionAfterGpuJob) {
   AddGpuCommandBuffer(submit_info, 115, 119);
   AddGpuCommandBuffer(submit_info, 120, 124);
   AddGpuDebugMarker(submission, meta_info, 42, 116, 121);
+  submission->set_num_begin_markers(1);
 
   uint64_t actual_timeline_key;
   EXPECT_CALL(listener, OnKeyAndString(_, "timeline"))
@@ -626,33 +654,14 @@ TEST(CaptureEventProcessor, CanHandleGpuSubmissionAfterGpuJob) {
 
   event_processor.ProcessEvent(queue_submission_event);
 
-  EXPECT_EQ(command_buffer_timer_1.thread_id(), gpu_job->tid());
-  EXPECT_EQ(command_buffer_timer_1.depth(), gpu_job->depth());
-  EXPECT_EQ(command_buffer_timer_1.start(), gpu_job->gpu_hardware_start_time_ns());
-  EXPECT_EQ(command_buffer_timer_1.end(), gpu_job->gpu_hardware_start_time_ns() + 4);
-  EXPECT_EQ(command_buffer_timer_1.type(), TimerInfo::kGpuCommandBuffer);
-  EXPECT_EQ(command_buffer_timer_1.timeline_hash(), actual_timeline_key);
-  EXPECT_EQ(command_buffer_timer_1.user_data_key(), actual_command_buffer_key);
+  ExpectCommandBufferTimerEq(command_buffer_timer_1, *gpu_job, 30, 34, actual_timeline_key,
+                             actual_command_buffer_key);
 
-  EXPECT_EQ(command_buffer_timer_2.thread_id(), gpu_job->tid());
-  EXPECT_EQ(command_buffer_timer_2.depth(), gpu_job->depth());
-  EXPECT_EQ(command_buffer_timer_2.start(), gpu_job->gpu_hardware_start_time_ns() + 5);
-  EXPECT_EQ(command_buffer_timer_2.end(), gpu_job->gpu_hardware_start_time_ns() + 9);
-  EXPECT_EQ(command_buffer_timer_2.type(), TimerInfo::kGpuCommandBuffer);
-  EXPECT_EQ(command_buffer_timer_2.timeline_hash(), actual_timeline_key);
-  EXPECT_EQ(command_buffer_timer_2.user_data_key(), actual_command_buffer_key);
+  ExpectCommandBufferTimerEq(command_buffer_timer_2, *gpu_job, 35, 39, actual_timeline_key,
+                             actual_command_buffer_key);
 
-  EXPECT_EQ(debug_marker_timer.thread_id(), gpu_job->tid());
-  EXPECT_EQ(debug_marker_timer.start(), gpu_job->gpu_hardware_start_time_ns() + 1);
-  EXPECT_EQ(debug_marker_timer.end(), gpu_job->gpu_hardware_start_time_ns() + 6);
-  EXPECT_EQ(debug_marker_timer.depth(), 1);
-  EXPECT_EQ(debug_marker_timer.type(), TimerInfo::kGpuDebugMarker);
-  EXPECT_EQ(debug_marker_timer.timeline_hash(), actual_marker_timeline_key);
-  EXPECT_EQ(debug_marker_timer.user_data_key(), actual_marker_key);
-  EXPECT_EQ(debug_marker_timer.color().alpha(), static_cast<uint32_t>(1.f * 255));
-  EXPECT_EQ(debug_marker_timer.color().red(), static_cast<uint32_t>(.75f * 255));
-  EXPECT_EQ(debug_marker_timer.color().green(), static_cast<uint32_t>(.5f * 255));
-  EXPECT_EQ(debug_marker_timer.color().blue(), static_cast<uint32_t>(.25f * 255));
+  ExpectDebugMarkerTimerEq(debug_marker_timer, 31, 36, gpu_job->tid(), 1,
+                           actual_marker_timeline_key, actual_marker_key);
 }
 
 TEST(CaptureEventProcessor, CanHandleGpuSubmissionReceivedBeforeGpuJob) {
@@ -675,6 +684,7 @@ TEST(CaptureEventProcessor, CanHandleGpuSubmissionReceivedBeforeGpuJob) {
   AddGpuCommandBuffer(submit_info, 115, 119);
   AddGpuCommandBuffer(submit_info, 120, 124);
   AddGpuDebugMarker(submission, meta_info, 42, 116, 121);
+  submission->set_num_begin_markers(1);
 
   EXPECT_CALL(listener, OnTimer).Times(0);
 
@@ -721,39 +731,107 @@ TEST(CaptureEventProcessor, CanHandleGpuSubmissionReceivedBeforeGpuJob) {
 
   event_processor.ProcessEvent(gpu_job_event);
 
-  EXPECT_EQ(command_buffer_timer_1.thread_id(), gpu_job->tid());
-  EXPECT_EQ(command_buffer_timer_1.depth(), gpu_job->depth());
-  EXPECT_EQ(command_buffer_timer_1.start(), gpu_job->gpu_hardware_start_time_ns());
-  EXPECT_EQ(command_buffer_timer_1.end(), gpu_job->gpu_hardware_start_time_ns() + 4);
-  EXPECT_EQ(command_buffer_timer_1.type(), TimerInfo::kGpuCommandBuffer);
-  EXPECT_EQ(command_buffer_timer_1.timeline_hash(), actual_timeline_key);
-  EXPECT_EQ(command_buffer_timer_1.user_data_key(), actual_command_buffer_key);
+  ExpectCommandBufferTimerEq(command_buffer_timer_1, *gpu_job, 30, 34, actual_timeline_key,
+                             actual_command_buffer_key);
 
-  EXPECT_EQ(command_buffer_timer_2.thread_id(), gpu_job->tid());
-  EXPECT_EQ(command_buffer_timer_2.depth(), gpu_job->depth());
-  EXPECT_EQ(command_buffer_timer_2.start(), gpu_job->gpu_hardware_start_time_ns() + 5);
-  EXPECT_EQ(command_buffer_timer_2.end(), gpu_job->gpu_hardware_start_time_ns() + 9);
-  EXPECT_EQ(command_buffer_timer_2.type(), TimerInfo::kGpuCommandBuffer);
-  EXPECT_EQ(command_buffer_timer_2.timeline_hash(), actual_timeline_key);
-  EXPECT_EQ(command_buffer_timer_2.user_data_key(), actual_command_buffer_key);
+  ExpectCommandBufferTimerEq(command_buffer_timer_2, *gpu_job, 35, 39, actual_timeline_key,
+                             actual_command_buffer_key);
 
-  EXPECT_EQ(debug_marker_timer.thread_id(), gpu_job->tid());
-  EXPECT_EQ(debug_marker_timer.start(), gpu_job->gpu_hardware_start_time_ns() + 1);
-  EXPECT_EQ(debug_marker_timer.end(), gpu_job->gpu_hardware_start_time_ns() + 6);
-  EXPECT_EQ(debug_marker_timer.depth(), 1);
-  EXPECT_EQ(debug_marker_timer.type(), TimerInfo::kGpuDebugMarker);
-  EXPECT_EQ(debug_marker_timer.timeline_hash(), actual_marker_timeline_key);
-  EXPECT_EQ(debug_marker_timer.user_data_key(), actual_marker_key);
-  EXPECT_EQ(debug_marker_timer.color().alpha(), static_cast<uint32_t>(1.f * 255));
-  EXPECT_EQ(debug_marker_timer.color().red(), static_cast<uint32_t>(.75f * 255));
-  EXPECT_EQ(debug_marker_timer.color().green(), static_cast<uint32_t>(.5f * 255));
-  EXPECT_EQ(debug_marker_timer.color().blue(), static_cast<uint32_t>(.25f * 255));
+  ExpectDebugMarkerTimerEq(debug_marker_timer, 31, 36, gpu_job->tid(), 1,
+                           actual_marker_timeline_key, actual_marker_key);
 }
 
 TEST(CaptureEventProcessor, CanHandleGpuDebugMarkersSpreadAcrossSubmissions) {
   MockCaptureListener listener;
   CaptureEventProcessor event_processor(&listener);
-  // TODO
+
+  CaptureEvent gpu_job_event_1;
+  GpuJob* gpu_job_1 = CreateGpuJob(&gpu_job_event_1, 10, 20, 30, 40);
+  CaptureEvent gpu_job_event_2;
+  GpuJob* gpu_job_2 = CreateGpuJob(&gpu_job_event_2, 50, 60, 70, 80);
+
+  CaptureEvent marker_string_event;
+  InternedString* marker_string = marker_string_event.mutable_interned_string();
+  marker_string->set_key(42);
+  marker_string->set_intern("marker");
+
+  CaptureEvent queue_submission_event_1;
+  GpuQueueSubmission* submission_1 = queue_submission_event_1.mutable_gpu_queue_submission();
+  GpuQueueSubmissionMetaInfo* meta_info_1 = CreateGpuQueueSubmissionMetaInfo(submission_1, 9, 11);
+  GpuSubmitInfo* submit_info_1 = submission_1->add_submit_infos();
+  AddGpuCommandBuffer(submit_info_1, 115, 119);
+  AddGpuCommandBuffer(submit_info_1, 120, 124);
+  submission_1->set_num_begin_markers(1);
+
+  CaptureEvent queue_submission_event_2;
+  GpuQueueSubmission* submission_2 = queue_submission_event_2.mutable_gpu_queue_submission();
+  CreateGpuQueueSubmissionMetaInfo(submission_2, 49, 51);
+  GpuSubmitInfo* submit_info_2 = submission_2->add_submit_infos();
+  AddGpuCommandBuffer(submit_info_2, 145, 154);
+  AddGpuDebugMarker(submission_2, meta_info_1, 42, 116, 153);
+
+  uint64_t actual_timeline_key;
+  EXPECT_CALL(listener, OnKeyAndString(_, "timeline"))
+      .Times(1)
+      .WillOnce(SaveArg<0>(&actual_timeline_key));
+  EXPECT_CALL(listener, OnKeyAndString(_, "sw queue")).Times(1);
+  EXPECT_CALL(listener, OnKeyAndString(_, "hw queue")).Times(1);
+  EXPECT_CALL(listener, OnKeyAndString(_, "hw execution")).Times(1);
+
+  EXPECT_CALL(listener, OnTimer).Times(6);
+
+  event_processor.ProcessEvent(gpu_job_event_1);
+  event_processor.ProcessEvent(gpu_job_event_2);
+  event_processor.ProcessEvent(marker_string_event);
+
+  testing::Mock::VerifyAndClearExpectations(&listener);
+
+  uint64_t actual_command_buffer_key;
+  EXPECT_CALL(listener, OnKeyAndString(_, "command buffer"))
+      .Times(1)
+      .WillOnce(SaveArg<0>(&actual_command_buffer_key));
+
+  TimerInfo command_buffer_timer_1;
+  TimerInfo command_buffer_timer_2;
+  EXPECT_CALL(listener, OnTimer)
+      .Times(2)
+      .WillOnce(SaveArg<0>(&command_buffer_timer_1))
+      .WillOnce(SaveArg<0>(&command_buffer_timer_2));
+
+  event_processor.ProcessEvent(queue_submission_event_1);
+
+  testing::Mock::VerifyAndClearExpectations(&listener);
+
+  ExpectCommandBufferTimerEq(command_buffer_timer_1, *gpu_job_1, 30, 34, actual_timeline_key,
+                             actual_command_buffer_key);
+
+  ExpectCommandBufferTimerEq(command_buffer_timer_2, *gpu_job_1, 35, 39, actual_timeline_key,
+                             actual_command_buffer_key);
+
+  TimerInfo command_buffer_timer_3;
+  TimerInfo debug_marker_timer;
+  EXPECT_CALL(listener, OnTimer)
+      .Times(2)
+      .WillOnce(SaveArg<0>(&command_buffer_timer_3))
+      .WillOnce(SaveArg<0>(&debug_marker_timer));
+
+  uint64_t actual_marker_timeline_key = 0;
+  EXPECT_CALL(listener, OnKeyAndString(_, "timeline_marker"))
+      .Times(1)
+      .WillOnce(SaveArg<0>(&actual_marker_timeline_key));
+  uint64_t actual_marker_key = 0;
+  EXPECT_CALL(listener, OnKeyAndString(_, "marker"))
+      .Times(1)
+      .WillOnce(SaveArg<0>(&actual_marker_key));
+
+  event_processor.ProcessEvent(queue_submission_event_2);
+  testing::Mock::VerifyAndClearExpectations(&listener);
+
+  ExpectCommandBufferTimerEq(command_buffer_timer_3, *gpu_job_2, 70, 79, actual_timeline_key,
+                             actual_command_buffer_key);
+
+  ExpectDebugMarkerTimerEq(debug_marker_timer, 31, 78, gpu_job_2->tid(), 1,
+                           actual_marker_timeline_key, actual_marker_key);
 }
 
 TEST(CaptureEventProcessor, CanHandleGpuDebugMarkersWithNoBeginRecorded) {

@@ -434,12 +434,14 @@ const GpuQueueSubmission* CaptureEventProcessor::FindMatchingGpuQueueSubmission(
   const auto& post_submission_time_to_gpu_submission =
       post_submission_time_to_gpu_submission_it->second;
 
+  // Find the first Gpu submission with a "post submission" timestamp greater or equal to the Gpu
+  // job's timestamp. If the "pre submission" timestamp is not greater (i.e. less or equal) than the
+  // job's timestamp, we have found the matching submission.
   auto lower_bound_gpu_submission_it =
       post_submission_time_to_gpu_submission.lower_bound(submit_time);
   if (lower_bound_gpu_submission_it == post_submission_time_to_gpu_submission.end()) {
     return nullptr;
   }
-
   const GpuQueueSubmission* matching_gpu_submission = &lower_bound_gpu_submission_it->second;
 
   if (matching_gpu_submission->meta_info().pre_submission_cpu_timestamp() > submit_time) {
@@ -459,24 +461,27 @@ const GpuJob* CaptureEventProcessor::FindMatchingGpuJob(int32_t thread_id,
 
   const auto& submission_time_to_gpu_job = submission_time_to_gpu_job_it->second;
 
-  auto upper_bound_gpu_job_it =
-      submission_time_to_gpu_job.upper_bound(pre_submission_cpu_timestamp);
-  if (upper_bound_gpu_job_it == submission_time_to_gpu_job.end()) {
+  // Find the first Gpu job that has a timestamp greater or equal to the "pre submission" timestamp:
+  auto gpu_job_matching_pre_submission_it =
+      submission_time_to_gpu_job.lower_bound(pre_submission_cpu_timestamp);
+  if (gpu_job_matching_pre_submission_it == submission_time_to_gpu_job.end()) {
     return nullptr;
   }
 
-  auto lower_bound_gpu_job_it =
-      submission_time_to_gpu_job.lower_bound(post_submission_cpu_timestamp);
-  if (lower_bound_gpu_job_it == submission_time_to_gpu_job.begin()) {
+  // Find the first Gpu job that has a timestamp greater to the "post submission" timestamp
+  // (which would be the next job) and decrease the iterator by one.
+  auto gpu_job_matching_post_submission_it =
+      submission_time_to_gpu_job.upper_bound(post_submission_cpu_timestamp);
+  if (gpu_job_matching_post_submission_it == submission_time_to_gpu_job.begin()) {
     return nullptr;
   }
-  --lower_bound_gpu_job_it;
+  --gpu_job_matching_post_submission_it;
 
-  if (&upper_bound_gpu_job_it->second != &lower_bound_gpu_job_it->second) {
+  if (&gpu_job_matching_pre_submission_it->second != &gpu_job_matching_post_submission_it->second) {
     return nullptr;
   }
 
-  return &upper_bound_gpu_job_it->second;
+  return &gpu_job_matching_pre_submission_it->second;
 }
 
 void CaptureEventProcessor::DoProcessGpuQueueSubmission(
@@ -567,6 +572,9 @@ void CaptureEventProcessor::ProcessGpuCommandBuffers(
 void CaptureEventProcessor::ProcessGpuDebugMarkers(
     const GpuQueueSubmission& gpu_queue_submission, const GpuJob& matching_gpu_job,
     const std::optional<GpuCommandBuffer>& first_command_buffer, const std::string& timeline) {
+  if (gpu_queue_submission.completed_markers_size() == 0) {
+    return;
+  }
   std::string timeline_marker = timeline + "_marker";
   uint64_t timeline_marker_hash = GetStringHashAndSendToListenerIfNecessary(timeline_marker);
 
