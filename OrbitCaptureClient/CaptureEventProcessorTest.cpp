@@ -557,11 +557,14 @@ void AddGpuDebugMarker(GpuQueueSubmission* submission, GpuQueueSubmissionMetaInf
   color->set_blue(0.25f);
   debug_marker->set_depth(1);
   debug_marker->set_text_key(marker_text_key);
+  debug_marker->set_end_gpu_timestamp_ns(end_gpu_timestamp);
+  if (begin_meta_info == nullptr) {
+    return;
+  }
   GpuDebugMarkerBeginInfo* begin_marker = debug_marker->mutable_begin_marker();
   GpuQueueSubmissionMetaInfo* meta_info_copy = begin_marker->mutable_meta_info();
   meta_info_copy->CopyFrom(*begin_meta_info);
   begin_marker->set_gpu_timestamp_ns(begin_gpu_timestamp);
-  debug_marker->set_end_gpu_timestamp_ns(end_gpu_timestamp);
 }
 
 void ExpectCommandBufferTimerEq(const TimerInfo& actual_timer, const GpuJob& gpu_job,
@@ -837,7 +840,69 @@ TEST(CaptureEventProcessor, CanHandleGpuDebugMarkersSpreadAcrossSubmissions) {
 TEST(CaptureEventProcessor, CanHandleGpuDebugMarkersWithNoBeginRecorded) {
   MockCaptureListener listener;
   CaptureEventProcessor event_processor(&listener);
-  // TODO
+
+  // The first job that actually contains the begin marker is not recorded.
+  CaptureEvent gpu_job_event_2;
+  GpuJob* gpu_job_2 = CreateGpuJob(&gpu_job_event_2, 50, 60, 70, 80);
+
+  CaptureEvent marker_string_event;
+  InternedString* marker_string = marker_string_event.mutable_interned_string();
+  marker_string->set_key(42);
+  marker_string->set_intern("marker");
+
+  CaptureEvent queue_submission_event_2;
+  GpuQueueSubmission* submission_2 = queue_submission_event_2.mutable_gpu_queue_submission();
+  CreateGpuQueueSubmissionMetaInfo(submission_2, 49, 51);
+  GpuSubmitInfo* submit_info_2 = submission_2->add_submit_infos();
+  AddGpuCommandBuffer(submit_info_2, 145, 154);
+  AddGpuDebugMarker(submission_2, nullptr, 42, 116, 153);
+
+  uint64_t actual_timeline_key;
+  EXPECT_CALL(listener, OnKeyAndString(_, "timeline"))
+      .Times(1)
+      .WillOnce(SaveArg<0>(&actual_timeline_key));
+  EXPECT_CALL(listener, OnKeyAndString(_, "sw queue")).Times(1);
+  EXPECT_CALL(listener, OnKeyAndString(_, "hw queue")).Times(1);
+  EXPECT_CALL(listener, OnKeyAndString(_, "hw execution")).Times(1);
+
+  EXPECT_CALL(listener, OnTimer).Times(3);
+
+  event_processor.ProcessEvent(gpu_job_event_2);
+  event_processor.ProcessEvent(marker_string_event);
+
+  testing::Mock::VerifyAndClearExpectations(&listener);
+
+  TimerInfo command_buffer_timer_3;
+  TimerInfo debug_marker_timer;
+  EXPECT_CALL(listener, OnTimer)
+      .Times(2)
+      .WillOnce(SaveArg<0>(&command_buffer_timer_3))
+      .WillOnce(SaveArg<0>(&debug_marker_timer));
+
+  uint64_t actual_command_buffer_key;
+  EXPECT_CALL(listener, OnKeyAndString(_, "command buffer"))
+      .Times(1)
+      .WillOnce(SaveArg<0>(&actual_command_buffer_key));
+
+  uint64_t actual_marker_timeline_key = 0;
+  EXPECT_CALL(listener, OnKeyAndString(_, "timeline_marker"))
+      .Times(1)
+      .WillOnce(SaveArg<0>(&actual_marker_timeline_key));
+  uint64_t actual_marker_key = 0;
+  EXPECT_CALL(listener, OnKeyAndString(_, "marker"))
+      .Times(1)
+      .WillOnce(SaveArg<0>(&actual_marker_key));
+
+  event_processor.ProcessEvent(queue_submission_event_2);
+  testing::Mock::VerifyAndClearExpectations(&listener);
+
+  ExpectCommandBufferTimerEq(command_buffer_timer_3, *gpu_job_2, 70, 79, actual_timeline_key,
+                             actual_command_buffer_key);
+
+  // We expect the begin timestamp to be approximated by the first known timestamp. Also as we don't
+  // know the thread id of the begin submission, the timer should state -1 as thread id.
+  ExpectDebugMarkerTimerEq(debug_marker_timer, 50, 78, -1, 1, actual_marker_timeline_key,
+                           actual_marker_key);
 }
 
 TEST(CaptureEventProcessor, CanHandleThreadStateSlices) {
