@@ -15,7 +15,7 @@ from core.orbit_e2e import E2ETestCase, wait_for_condition
 from core.common_controls import DataViewPanel
 
 
-flags.DEFINE_bool('enable_ui_beta', False, 'Expect Orbit to be started with the new UI')
+flags.DEFINE_bool('enable_ui_beta', True, 'Expect Orbit to be started with the new UI')
 
 
 def wait_for_main_window(application: Application):
@@ -64,8 +64,6 @@ class FilterAndSelectFirstProcess(E2ETestCase):
     Select the first process in the process list and verify there is at least one entry in the list
     """
     def _execute(self, process_filter):
-        window = self.suite.top_window()
-
         if flags.FLAGS.enable_ui_beta:
             filter_edit = self.find_control('Edit', 'FilterProcesses')
             process_list = self.find_control('Table', 'ProcessList')
@@ -81,7 +79,8 @@ class FilterAndSelectFirstProcess(E2ETestCase):
             filter_edit.set_focus()
             filter_edit.set_edit_text('')
             send_keys(process_filter)
-        self.expect_true(process_list.item_count() > 0, 'Process list has at least one entry')
+        # Wait for the process to show up - it may still be starting
+        wait_for_condition(lambda: process_list.item_count() > 0, 30)
 
         if flags.FLAGS.enable_ui_beta:
             logging.info('Process selected, continuing to main window...')

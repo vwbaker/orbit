@@ -183,6 +183,8 @@ if [ -n "$1" ]; then
     cp -v OrbitProfiler*.deb Orbit/collector/
     cp -v OrbitProfiler*.deb.asc Orbit/collector/
     cp -v bin/OrbitClientGgp Orbit/collector/
+    cp -v lib/libOrbitVulkanLayer.so Orbit/collector/
+    cp -v lib/VkLayer_Orbit_implicit.json Orbit/collector/
     zip Collector.zip -r Orbit/
     rm -rf Orbit/
     popd > /dev/null
@@ -198,7 +200,7 @@ if [ -n "$1" ]; then
     test -f NOTICE.Chromium && cp -v NOTICE.Chromium Orbit/NOTICE.Chromium
     cp -v LICENSE Orbit/LICENSE.txt
     cp -av "${REPO_ROOT}/contrib/automation_tests" Orbit
-    cp -v "${REPO_ROOT}/Orbit.h" Orbit/
+    cp -v "${REPO_ROOT}/src/Orbit.h" Orbit/
     zip -r Orbit.zip Orbit/
     rm -rf Orbit/
     popd > /dev/null

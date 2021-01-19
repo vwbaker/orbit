@@ -7,7 +7,7 @@ found in the LICENSE file.
 import logging
 import time
 
-from typing import Tuple, List
+from typing import Tuple, List, Iterable
 
 from core.common_controls import Track
 from core.orbit_e2e import E2ETestCase, E2ETestSuite
@@ -120,13 +120,16 @@ class MatchTracks(CaptureWindowE2ETestCaseBase):
     """
     Verify that the existing visible tracks match the expected tracks
     """
-    def _execute(self, expected_count: int = None, expected_names: List[str] = None, allow_additional_tracks=False):
+    def _execute(self, expected_count: int = None, expected_names: List[str or Iterable[str]] = None,
+                 allow_additional_tracks=False):
         """
         You need to pass either expected_track_count, or expected_name_list. If both are passed, they need to match
         w.r.t. expected number of tracks.
         :param expected_count: # of tracks to be visible
         :param expected_names: List of (partial) matching names of tracks to be visible.
-            The name is a partial match, but the exact number of tracks is expected.
+            The name is a partial match, but the exact number of tracks is expected. Each entry in this list can either
+            be a string or a list of strings. If an entry is a list of strings, the test expects at least on of the
+            names to be matched (i.e. this is an "or" condition on multiple possible track names)
         :param allow_additional_tracks: If True, encountering additional tracks beyond the given list / number is not
             considered an error
         """
@@ -150,14 +153,24 @@ class MatchTracks(CaptureWindowE2ETestCaseBase):
                 found = False
                 for track in tracks:
                     track_name = track.texts()[0]
-                    if name in track_name:
+                    if self._match(name, track_name):
                         found = True
                         names_found += 1
                         break
-                self.expect_true(found, "Found a match for track name '%s'" % name)
+                self.expect_true(found, "Found a match for track name '%s'" % str(name))
 
         if expected_names and not allow_additional_tracks:
             self.expect_eq(names_found, expected_count, "No additional tracks are found")
+
+    @staticmethod
+    def _match(expected_name: str or Iterable[str], found_name: str) -> bool:
+        if isinstance(expected_name, str):
+            return found_name in expected_name
+        else:
+            for option in expected_name:
+                if found_name in option:
+                    return True
+        return False
 
 
 class FilterTracks(CaptureWindowE2ETestCaseBase):
@@ -190,9 +203,24 @@ class Capture(E2ETestCase):
         logging.info('Showing capture window')
         self.find_control("TabItem", "Capture").click_input()
 
-    def _execute(self, length_in_seconds: int = 5):
-        self._show_capture_window()
+    def _set_capture_options(self, collect_thread_states: bool):
+        capture_tab = self.find_control('Group', "CaptureTab")
 
+        logging.info('Opening "Capture Options" dialog')
+        capture_options_button = self.find_control('Button', 'Capture Options', parent=capture_tab)
+        capture_options_button.click_input()
+        
+        capture_options_dialog = self.find_control('Window', 'Capture Options')
+
+        collect_thread_states_checkbox = self.find_control('CheckBox', 'Collect thread states', parent=capture_options_dialog)
+        if collect_thread_states_checkbox.get_toggle_state() != collect_thread_states:
+            logging.info('Toggling "Collect thread states" checkbox')
+            collect_thread_states_checkbox.click_input()
+
+        logging.info('Saving "Capture Options"')
+        self.find_control('Button', 'OK', parent=capture_options_dialog).click_input()
+
+    def _take_capture(self, length_in_seconds: int):
         capture_tab = self.find_control('Group', "CaptureTab")
         toggle_capture_button = self.find_control('Button', 'Toggle Capture', parent=capture_tab)
 
@@ -202,8 +230,12 @@ class Capture(E2ETestCase):
         logging.info('Stopping capture')
         toggle_capture_button.click_input()
 
-        self._verify_existence_of_tracks()
-
     def _verify_existence_of_tracks(self):
         logging.info("Verifying existence of at least one track...")
         MatchTracks(expected_count=1, allow_additional_tracks=True).execute(self.suite)
+
+    def _execute(self, length_in_seconds: int = 5, collect_thread_states: bool = False):
+        self._show_capture_window()
+        self._set_capture_options(collect_thread_states)
+        self._take_capture(length_in_seconds)
+        self._verify_existence_of_tracks()

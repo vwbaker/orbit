@@ -1,0 +1,81 @@
+// Copyright (c) 2020 The Orbit Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef ORBIT_GL_LIVE_FUNCTIONS_DATA_VIEW_H_
+#define ORBIT_GL_LIVE_FUNCTIONS_DATA_VIEW_H_
+
+#include <absl/container/flat_hash_map.h>
+#include <stdint.h>
+
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "DataView.h"
+#include "TextBox.h"
+#include "TimerChain.h"
+#include "capture_data.pb.h"
+
+class LiveFunctionsController;
+class OrbitApp;
+
+class LiveFunctionsDataView : public DataView {
+ public:
+  explicit LiveFunctionsDataView(LiveFunctionsController* live_functions, OrbitApp* app);
+
+  const std::vector<Column>& GetColumns() override;
+  int GetDefaultSortingColumn() override { return kColumnCount; }
+  std::vector<std::string> GetContextMenu(int clicked_index,
+                                          const std::vector<int>& selected_indices) override;
+  std::string GetValue(int row, int column) override;
+  const std::optional<int> GetSelectedIndex() override;
+  void UpdateSelectedFunctionId();
+
+  void OnSelect(std::optional<int> row) override;
+  void OnContextMenu(const std::string& action, int menu_index,
+                     const std::vector<int>& item_indices) override;
+  void OnDataChanged() override;
+  void OnTimer() override;
+  std::optional<int> GetRowFromFunctionId(uint64_t function_id);
+
+ protected:
+  void DoFilter() override;
+  void DoSort() override;
+  [[nodiscard]] uint64_t GetInstrumentedFunctionId(uint32_t row) const;
+  [[nodiscard]] const orbit_client_protos::FunctionInfo& GetInstrumentedFunction(
+      uint32_t row) const;
+  [[nodiscard]] const std::pair<TextBox*, TextBox*> GetMinMax(uint64_t function_id) const;
+
+  absl::flat_hash_map<uint64_t, orbit_client_protos::FunctionInfo> functions_;
+
+  LiveFunctionsController* live_functions_;
+  uint64_t selected_function_id_;
+
+  enum ColumnIndex {
+    kColumnSelected,
+    kColumnName,
+    kColumnCount,
+    kColumnTimeTotal,
+    kColumnTimeAvg,
+    kColumnTimeMin,
+    kColumnTimeMax,
+    kColumnModule,
+    kColumnAddress,
+    kNumColumns
+  };
+
+  static const std::string kMenuActionSelect;
+  static const std::string kMenuActionUnselect;
+  static const std::string kMenuActionJumpToFirst;
+  static const std::string kMenuActionJumpToLast;
+  static const std::string kMenuActionJumpToMin;
+  static const std::string kMenuActionJumpToMax;
+  static const std::string kMenuActionDisassembly;
+  static const std::string kMenuActionIterate;
+  static const std::string kMenuActionEnableFrameTrack;
+  static const std::string kMenuActionDisableFrameTrack;
+};
+
+#endif  // ORBIT_GL_LIVE_FUNCTIONS_DATA_VIEW_H_

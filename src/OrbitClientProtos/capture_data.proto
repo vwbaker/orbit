@@ -1,0 +1,178 @@
+// Copyright (c) 2020 The Orbit Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+syntax = "proto3";
+
+package orbit_client_protos;
+
+message FunctionStats {
+  uint64 count = 1;
+  uint64 total_time_ns = 2;
+  uint64 average_time_ns = 3;
+  uint64 min_ns = 4;
+  uint64 max_ns = 5;
+}
+
+message ProcessInfo {
+  int32 pid = 1;
+  string name = 2;
+  double cpu_usage = 3;
+  string full_path = 4;
+  string command_line = 5;
+  bool is_64_bit = 6;
+}
+
+message ModuleInfo {
+  string name = 1;
+  string file_path = 2;
+  uint64 file_size = 3;
+  uint64 address_start = 4;
+  uint64 address_end = 5;
+  string build_id = 6;
+  uint64 load_bias = 7;
+}
+
+message FunctionInfo {
+  reserved 4, 6, 11;
+  string name = 1;
+  string pretty_name = 2;
+  string loaded_module_path = 3;
+  uint64 address = 5;
+  uint64 size = 7;
+  string file = 8;
+  uint32 line = 9;
+
+  enum OrbitType {
+    kNone = 0;
+    kOrbitTimerStart = 1;
+    kOrbitTimerStop = 2;
+    kOrbitTimerStartAsync = 3;
+    kOrbitTimerStopAsync = 4;
+    kOrbitTrackValue = 5;
+  }
+  OrbitType orbit_type = 10;
+}
+
+message CallstackEvent {
+  uint64 time = 1;
+  uint64 callstack_hash = 2;
+  int32 thread_id = 3;
+}
+
+message CallstackInfo {
+  repeated uint64 data = 1;
+}
+
+message ThreadStateSliceInfo {
+  // pid is absent as we don't yet get that information from the service.
+  int32 tid = 1;
+  enum ThreadState {
+    kRunning = 0;
+    kRunnable = 1;
+    kInterruptibleSleep = 2;
+    kUninterruptibleSleep = 3;
+    kStopped = 4;
+    kTraced = 5;
+    kDead = 6;
+    kZombie = 7;
+    kParked = 8;
+    kIdle = 9;
+  }
+  ThreadState thread_state = 2;
+  uint64 begin_timestamp_ns = 3;
+  uint64 end_timestamp_ns = 4;
+}
+
+message TracepointInfo {
+  string name = 1;
+  string category = 2;
+  uint64 tracepoint_info_key = 3;
+}
+
+message TracepointEventInfo {
+  int32 pid = 1;
+  int32 tid = 2;
+  int64 time = 3;
+  int32 cpu = 4;
+  uint64 tracepoint_info_key = 5;
+}
+
+message LinuxAddressInfo {
+  uint64 absolute_address = 1;
+  string module_path = 2;
+  string function_name = 3;
+  uint64 offset_in_function = 4;
+}
+
+message CaptureHeader {
+  string version = 1;
+}
+
+message FrameTracksInfo {
+  reserved 1;
+  repeated uint64 frame_track_function_ids = 2;
+}
+
+message UserDefinedCaptureInfo {
+  FrameTracksInfo frame_tracks_info = 1;
+}
+
+message CaptureInfo {
+  reserved 1, 2, 3;
+  map<uint64, FunctionInfo> instrumented_functions = 16;
+  map<int32, string> thread_names = 4;
+  repeated ThreadStateSliceInfo thread_state_slices = 12;
+  repeated LinuxAddressInfo address_infos = 5;
+  repeated CallstackInfo callstacks = 6;
+  repeated CallstackEvent callstack_events = 7;
+  map<uint64, string> key_to_string = 8;
+  // TODO(kuebler): consider removing this field completely.
+  map<uint64, FunctionStats> function_stats = 9;
+  repeated TracepointInfo tracepoint_infos = 10;
+  repeated TracepointEventInfo tracepoint_event_infos = 11;
+  ProcessInfo process = 13;
+  repeated ModuleInfo modules = 14;
+  UserDefinedCaptureInfo user_defined_capture_info = 15;
+}
+
+message TimerInfo {
+  uint64 start = 1;
+  uint64 end = 2;
+  int32 process_id = 3;
+  int32 thread_id = 4;
+  uint32 depth = 5;
+
+  enum Type {
+    kNone = 0;
+    kCoreActivity = 1;
+    kIntrospection = 2;
+    kGpuActivity = 3;
+    kFrame = 4;
+    kGpuCommandBuffer = 5;
+    kGpuDebugMarker = 6;
+  }
+  Type type = 6;
+
+  int32 processor = 7;
+  uint64 callstack_id = 8;
+  uint64 function_id = 9;
+  uint64 user_data_key = 10;
+  uint64 timeline_hash = 11;
+  repeated uint64 registers = 12;
+  Color color = 13;
+}
+
+message Color {
+  // Each color must be between 0 and 255 (including).
+  uint32 red = 1;
+  uint32 green = 2;
+  uint32 blue = 3;
+  uint32 alpha = 4;
+}
+
+// libprotobuf-mutator needs a single proto with all the data
+message CaptureDeserializerFuzzerInfo {
+  CaptureInfo capture_info = 1;
+  repeated TimerInfo timers = 2;
+}
