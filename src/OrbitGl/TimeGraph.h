@@ -24,7 +24,6 @@
 #include "ManualInstrumentationManager.h"
 #include "OrbitClientModel/CaptureData.h"
 #include "PickingManager.h"
-#include "StringManager.h"
 #include "TextBox.h"
 #include "TextRenderer.h"
 #include "TimeGraphLayout.h"
@@ -38,7 +37,7 @@ class OrbitApp;
 
 class TimeGraph {
  public:
-  explicit TimeGraph(uint32_t font_size, OrbitApp* app);
+  explicit TimeGraph(OrbitApp* app);
   ~TimeGraph();
 
   void Draw(GlCanvas* canvas, PickingMode picking_mode = PickingMode::kNone);
@@ -57,7 +56,7 @@ class TimeGraph {
 
   // TODO (b/176056427): TimeGraph should not store nor expose CaptureData.
   [[nodiscard]] const CaptureData* GetCaptureData() const { return capture_data_; }
-  void SetCaptureData(CaptureData* capture_data) { capture_data_ = capture_data; }
+  void SetCaptureData(CaptureData* capture_data);
   [[nodiscard]] TrackManager* GetTrackManager() { return track_manager_.get(); }
 
   [[nodiscard]] float GetTextBoxHeight() const { return layout_.GetTextBoxHeight(); }
@@ -115,15 +114,13 @@ class TimeGraph {
   [[nodiscard]] int GetNumDrawnTextBoxes() { return num_drawn_text_boxes_; }
   void SetTextRenderer(TextRenderer* text_renderer) { text_renderer_ = text_renderer; }
   [[nodiscard]] TextRenderer* GetTextRenderer() { return &text_renderer_static_; }
-  void SetStringManager(std::shared_ptr<StringManager> str_manager);
   void SetCanvas(GlCanvas* canvas);
   [[nodiscard]] GlCanvas* GetCanvas() { return canvas_; }
   [[nodiscard]] uint32_t CalculateZoomedFontSize() const {
-    return lround((font_size_)*layout_.GetScale());
+    return lround(layout_.GetFontSize() * layout_.GetScale());
   }
   [[nodiscard]] Batcher& GetBatcher() { return batcher_; }
   [[nodiscard]] uint32_t GetNumTimers() const;
-  [[nodiscard]] uint32_t GetNumCores() const { return num_cores_; }
   [[nodiscard]] std::vector<std::shared_ptr<TimerChain>> GetAllTimerChains() const;
   [[nodiscard]] std::vector<std::shared_ptr<TimerChain>> GetAllThreadTrackTimerChains() const;
   [[nodiscard]] std::vector<std::shared_ptr<TimerChain>> GetAllSerializableTimerChains() const;
@@ -189,10 +186,8 @@ class TimeGraph {
   void ProcessValueTrackingTimer(const orbit_client_protos::TimerInfo& timer_info);
   void ProcessAsyncTimer(const std::string& track_name,
                          const orbit_client_protos::TimerInfo& timer_info);
-  void SetNumCores(uint32_t num_cores) { num_cores_ = num_cores; }
 
  private:
-  uint32_t font_size_;
   TextRenderer text_renderer_static_;
   TextRenderer* text_renderer_ = nullptr;
   GlCanvas* canvas_ = nullptr;
@@ -217,7 +212,6 @@ class TimeGraph {
 
   TimeGraphAccessibility accessibility_;
 
-  uint32_t num_cores_;
   // Be careful when directly changing these members without using the
   // methods NeedsRedraw() or NeedsUpdate():
   // needs_update_primitives_ should always imply needs_redraw_, that is

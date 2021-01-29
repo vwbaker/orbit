@@ -22,6 +22,7 @@
 #include "DataManager.h"
 #include "DataViewTypes.h"
 #include "FunctionsDataView.h"
+#include "GrpcProtos/Constants.h"
 #include "LiveFunctionsController.h"
 #include "OrbitBase/Logging.h"
 #include "OrbitClientData/FunctionUtils.h"
@@ -37,7 +38,7 @@ using orbit_client_protos::FunctionStats;
 LiveFunctionsDataView::LiveFunctionsDataView(LiveFunctionsController* live_functions, OrbitApp* app)
     : DataView(DataViewType::kLiveFunctions, app),
       live_functions_(live_functions),
-      selected_function_id_(DataManager::kInvalidFunctionId) {
+      selected_function_id_(orbit_grpc_protos::kInvalidFunctionId) {
   update_period_ms_ = 300;
   OnDataChanged();
 }
@@ -97,7 +98,7 @@ std::string LiveFunctionsDataView::GetValue(int row, int column) {
   }
 }
 
-const std::optional<int> LiveFunctionsDataView::GetSelectedIndex() {
+std::optional<int> LiveFunctionsDataView::GetSelectedIndex() {
   return GetRowFromFunctionId(selected_function_id_);
 }
 
@@ -109,7 +110,7 @@ void LiveFunctionsDataView::OnSelect(std::optional<int> row) {
   app_->DeselectTextBox();
 
   if (!row.has_value()) {
-    app_->set_highlighted_function_id(DataManager::kInvalidFunctionId);
+    app_->set_highlighted_function_id(orbit_grpc_protos::kInvalidFunctionId);
   } else {
     app_->set_highlighted_function_id(GetInstrumentedFunctionId(row.value()));
   }
@@ -138,7 +139,7 @@ void LiveFunctionsDataView::OnSelect(std::optional<int> row) {
 
 void LiveFunctionsDataView::DoSort() {
   if (!app_->HasCaptureData()) {
-    CHECK(functions_.size() == 0);
+    CHECK(functions_.empty());
     return;
   }
   bool ascending = sorting_orders_[sorting_column_] == SortingOrder::kAscending;
@@ -415,7 +416,7 @@ const FunctionInfo& LiveFunctionsDataView::GetInstrumentedFunction(uint32_t row)
   return functions_.at(indices_[row]);
 }
 
-const std::pair<TextBox*, TextBox*> LiveFunctionsDataView::GetMinMax(uint64_t function_id) const {
+std::pair<TextBox*, TextBox*> LiveFunctionsDataView::GetMinMax(uint64_t function_id) const {
   TextBox* min_box = nullptr;
   TextBox* max_box = nullptr;
   std::vector<std::shared_ptr<TimerChain>> chains =

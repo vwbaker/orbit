@@ -15,16 +15,19 @@
 #include "TimeGraph.h"
 #include "TimeGraphLayout.h"
 
-GraphTrack::GraphTrack(TimeGraph* time_graph, std::string name)
-    : Track(time_graph), name_(std::move(name)) {}
+GraphTrack::GraphTrack(TimeGraph* time_graph, std::string name, CaptureData* capture_data)
+    : Track(time_graph, capture_data) {
+  SetName(name);
+  SetLabel(name);
+}
 
 void GraphTrack::UpdatePrimitives(uint64_t min_tick, uint64_t max_tick, PickingMode picking_mode,
                                   float z_offset) {
   Batcher* batcher = &time_graph_->GetBatcher();
   GlCanvas* canvas = time_graph_->GetCanvas();
 
-  float trackWidth = canvas->GetWorldWidth();
-  SetSize(trackWidth, GetHeight());
+  float track_width = canvas->GetWorldWidth();
+  SetSize(track_width, GetHeight());
   pos_[0] = canvas->GetWorldTopLeftX();
 
   Color color = GetBackgroundColor();
@@ -102,14 +105,15 @@ void GraphTrack::Draw(GlCanvas* canvas, PickingMode picking_mode, float z_offset
   DrawLabel(canvas, Vec2(point_x, point_y), std::to_string(value), kBlack, kWhite, text_z);
 }
 
-void GraphTrack::DrawSquareDot(Batcher* batcher, Vec2 center, float radius, float z, Color color) {
+void GraphTrack::DrawSquareDot(Batcher* batcher, Vec2 center, float radius, float z,
+                               const Color& color) {
   Vec2 position(center[0] - radius, center[1] - radius);
   Vec2 size(2 * radius, 2 * radius);
   batcher->AddBox(Box(position, size, z), color);
 }
 
-void GraphTrack::DrawLabel(GlCanvas* canvas, Vec2 target_pos, const std::string text,
-                           Color text_color, Color font_color, float z) {
+void GraphTrack::DrawLabel(GlCanvas* canvas, Vec2 target_pos, const std::string& text,
+                           const Color& text_color, const Color& font_color, float z) {
   const TimeGraphLayout& layout = time_graph_->GetLayout();
   uint32_t font_size = time_graph_->CalculateZoomedFontSize();
 

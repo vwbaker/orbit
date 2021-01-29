@@ -25,7 +25,11 @@ class OrbitApp;
 
 class ThreadTrack final : public TimerTrack {
  public:
-  explicit ThreadTrack(TimeGraph* time_graph, int32_t thread_id, OrbitApp* app);
+  explicit ThreadTrack(TimeGraph* time_graph, int32_t thread_id, OrbitApp* app,
+                       CaptureData* capture_data);
+  void InitializeNameAndLabel(int32_t thread_id);
+
+  void SetCaptureData(CaptureData* capture_data) override;
 
   [[nodiscard]] int32_t GetThreadId() const { return thread_id_; }
 
@@ -48,7 +52,7 @@ class ThreadTrack final : public TimerTrack {
 
  protected:
   [[nodiscard]] bool IsTimerActive(const orbit_client_protos::TimerInfo& timer) const override;
-  [[nodiscard]] virtual bool IsTrackSelected() const override;
+  [[nodiscard]] bool IsTrackSelected() const override;
 
   [[nodiscard]] Color GetTimerColor(const orbit_client_protos::TimerInfo& timer,
                                     bool is_selected) const override;

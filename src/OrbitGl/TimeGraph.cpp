@@ -41,8 +41,8 @@ using orbit_client_protos::TimerInfo;
 
 TimeGraph* GCurrentTimeGraph = nullptr;
 
-TimeGraph::TimeGraph(uint32_t font_size, OrbitApp* app)
-    : font_size_(font_size), accessibility_(this), batcher_(BatcherId::kTimeGraph), app_{app} {
+TimeGraph::TimeGraph(OrbitApp* app)
+    : accessibility_(this), batcher_(BatcherId::kTimeGraph), app_{app} {
   track_manager_ = std::make_unique<TrackManager>(this, app);
 
   async_timer_info_listener_ =
@@ -50,17 +50,12 @@ TimeGraph::TimeGraph(uint32_t font_size, OrbitApp* app)
           [this](const std::string& name, const TimerInfo& timer_info) {
             ProcessAsyncTimer(name, timer_info);
           });
-  num_cores_ = 0;
   manual_instrumentation_manager_ = app_->GetManualInstrumentationManager();
   manual_instrumentation_manager_->AddAsyncTimerListener(async_timer_info_listener_.get());
 }
 
 TimeGraph::~TimeGraph() {
   manual_instrumentation_manager_->RemoveAsyncTimerListener(async_timer_info_listener_.get());
-}
-
-void TimeGraph::SetStringManager(std::shared_ptr<StringManager> str_manager) {
-  track_manager_->SetStringManager(str_manager.get());
 }
 
 void TimeGraph::SetCanvas(GlCanvas* canvas) {
@@ -288,14 +283,8 @@ void TimeGraph::ProcessTimer(const TimerInfo& timer_info, const FunctionInfo* fu
       // TODO(b/176962090): We need to create the `ThreadTrack` here even we don't use it, as we
       //  don't create it on new callstack events, yet.
       track_manager_->GetOrCreateThreadTrack(timer_info.thread_id());
-      SchedulerTrack* track = track_manager_->GetOrCreateSchedulerTrack();
-      track->OnTimer(timer_info);
-      if (GetNumCores() <= static_cast<uint32_t>(timer_info.processor())) {
-        auto num_cores = timer_info.processor() + 1;
-        SetNumCores(num_cores);
-        layout_.SetNumCores(num_cores);
-        track->SetLabel(absl::StrFormat("Scheduler (%u cores)", num_cores));
-      }
+      SchedulerTrack* scheduler_track = track_manager_->GetOrCreateSchedulerTrack();
+      scheduler_track->OnTimer(timer_info);
       break;
     }
     case TimerInfo::kNone: {
@@ -439,6 +428,11 @@ std::vector<std::shared_ptr<TimerChain>> TimeGraph::GetAllSerializableTimerChain
   return chains;
 }
 
+void TimeGraph::SetCaptureData(CaptureData* capture_data) {
+  capture_data_ = capture_data;
+  track_manager_->SetCaptureData(capture_data);
+}
+
 void TimeGraph::UpdateMaxTimeStamp(uint64_t time) {
   if (time > capture_max_timestamp_) {
     capture_max_timestamp_ = time;
@@ -545,7 +539,7 @@ void TimeGraph::NeedsUpdate() {
 
 void TimeGraph::UpdatePrimitives(PickingMode picking_mode) {
   ORBIT_SCOPE_FUNCTION;
-  CHECK(track_manager_->GetStringManager() != nullptr);
+  CHECK(app_->GetStringManager() != nullptr);
 
   batcher_.StartNewFrame();
   text_renderer_static_.Clear();
@@ -650,7 +644,7 @@ void TimeGraph::DrawIteratorBox(GlCanvas* canvas, Vec2 pos, Vec2 size, const Col
   const Color kBlack(0, 0, 0, 255);
   float text_width = canvas->GetTextRenderer().AddTextTrailingCharsPrioritized(
       text.c_str(), pos[0], text_box_y + layout_.GetTextOffset(), GlCanvas::kZValueTextUi, kBlack,
-      time.length(), font_size_, max_size);
+      time.length(), GetLayout().GetFontSize(), max_size);
 
   Vec2 white_box_size(std::min(static_cast<float>(text_width), max_size), GetTextBoxHeight());
   Vec2 white_box_position(pos[0], text_box_y);

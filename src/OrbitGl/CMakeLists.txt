@@ -47,7 +47,6 @@ target_sources(
          PickingManager.h
          PresetLoadState.h
          PresetsDataView.h
-         ProcessesDataView.h
          SamplingReport.h
          SamplingReportDataView.h
          SchedulerTrack.h
@@ -100,7 +99,6 @@ target_sources(
           ModulesDataView.cpp
           PickingManager.cpp
           PresetsDataView.cpp
-          ProcessesDataView.cpp
           SamplingReport.cpp
           SamplingReportDataView.cpp
           SchedulerTrack.cpp
@@ -123,14 +121,14 @@ target_include_directories(OrbitGl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(
   OrbitGl
-  PUBLIC MetricsUploader
+  PUBLIC GrpcProtos
+         MetricsUploader
          OrbitAccessibility
          OrbitCore
          OrbitCaptureClient
          OrbitClientData
          OrbitClientModel
          OrbitClientServices
-         OrbitProtos
          CONAN_PKG::Outcome
          CONAN_PKG::capstone
          CONAN_PKG::freetype-gl
@@ -142,6 +140,8 @@ target_link_libraries(
 
 if(TARGET OpenGL::GLX AND TARGET OpenGL::OpenGL)
   target_link_libraries(OrbitGl PUBLIC OpenGL::GLX)
+elseif(TARGET OpenGL::GL)
+  target_link_libraries(OrbitGl PUBLIC OpenGL::GL)
 endif()
 
 add_executable(OrbitGlTests)
@@ -172,8 +172,8 @@ add_fuzzer(CaptureDeserializerLoadFuzzer CaptureDeserializerLoadFuzzer.cpp)
 target_link_libraries(CaptureDeserializerLoadFuzzer
                       PRIVATE OrbitGl CONAN_PKG::libprotobuf-mutator)
 
-add_fuzzer(DataManagerUpdateModuleInfosFuzzer
-           DataManagerUpdateModuleInfosFuzzer.cpp)
-target_link_libraries(DataManagerUpdateModuleInfosFuzzer
+add_fuzzer(ModuleListFuzzer
+           ModuleListFuzzer.cpp)
+target_link_libraries(ModuleListFuzzer
                       PRIVATE OrbitGl CONAN_PKG::libprotobuf-mutator)
 

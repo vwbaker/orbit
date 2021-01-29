@@ -32,10 +32,10 @@ add_custom_command(TARGET OrbitVulkanLayer POST_BUILD COMMAND ${CMAKE_COMMAND}
                    $<TARGET_FILE_DIR:OrbitVulkanLayer>/VkLayer_Orbit_implicit.json)
 
 target_link_libraries(OrbitVulkanLayer PUBLIC
+        GrpcProtos
         OrbitBase
         OrbitProducer
-        OrbitProducerSideChannel
-        OrbitProtos
+        ProducerSideChannel
         Vulkan::Vulkan
         Vulkan::ValidationLayers)
 

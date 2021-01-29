@@ -5,6 +5,8 @@
 /*
  * Bridging accessibility from OrbitQt and OrbitGl.
  *
+ * Design can be found at go/stadia-orbit-capture-window-e2e.
+ *
  * The accessibility adapter exposes accessibility information of the OpenGl capture window to the
  * E2E tests. E2E tests work on top of Microsoft UI Automation
  *(https://docs.microsoft.com/en-us/windows/win32/winauto/uiauto-msaa).
@@ -46,13 +48,19 @@
  *                                            |
  *                                            +
  *
- * The static methods of AccessibilityAdapter keep track of all adapters created so far and, given
+ * AdapterRegistry keeps track of all adapters created so far and, given
  * an AccessibleInterface, can find the corresponsing QAccessibleInterface (which will be
  * implemented by a AccessibilityAdapter in most cases, but we'll get there...).
- * AccessibilityAdapter::GetOrCreateAdapter will return an existing interface, or create a new
+ * AdapterRegistry::GetOrCreateAdapter will return an existing interface, or create a new
  * adapter if needed. This usually happens as the tree is traversed - each AccessibilityAdapter
  * will query the children exposed through its AccessibleInterface pointer, and will create new
  * adapters for each of them as we go down the tree.
+ *
+ * To not interfere with the internal resource management of QT, AdapterRegistry does not create
+ * AccessibilityAdapter instances directly, but instead creates dummy QObjects of type
+ * OrbitGlInterfaceWrapper. By registering a custom accessibility factory, QT then takes care of
+ * creating the corresponding AccessibilityAdapters, and AdapterRegistry merely manages the lifetime
+ * of the dummy objects instead of the adapters.
  *
  * Everything above OrbitGlWidget is handled by the default implementation of Qt, and everything
  * below is handled by these adapters. To bridge the gap between OrbitGlWidget and GlCanvas, there
@@ -86,7 +94,7 @@
  * The OrbitGlWidgetAccessible is automatically created when an OrbitGlWidget is constructed by
  * installing a QT Accessibility Factory (InstallAccessibilityFactories()).
  *
- * To make sure adapters created by AccessibilityAdapter::GetOrCreateAdapter are deleted when the
+ * To make sure adapters created by AdapterRegistry::GetOrCreateAdapter are deleted when the
  * corresponding AccessibleInterface is deleted, these interfaces register themselves in the
  * AccessibleInterfaceRegistry (see AccessibleInterfaceRegistry.h), which in turn allows to register
  * a callback on interface deletion. AccessibilityAdapter registers itself for this callback and
@@ -107,38 +115,39 @@
 using orbit_accessibility::AccessibleInterface;
 using orbit_accessibility::AccessibleInterfaceRegistry;
 
-namespace {
-/*
- * Utility class to verify all created accessibility adapters have been cleaned up
- * when the application exits as a sanity check for correct registration behavior.
- *
- * A static instance of this is created on AccessibilityAdapter::Init() and will thus
- * be destructed at exit. At this point, all adapters should have been cleaned up.
- */
-class TeardownCheck {
- public:
-  ~TeardownCheck() { CHECK(orbit_qt::AccessibilityAdapter::RegisteredAdapterCount() == 0); }
-};
-}  // namespace
-
 namespace orbit_qt {
 
-absl::flat_hash_map<const AccessibleInterface*, QAccessibleInterface*>
-    AccessibilityAdapter::all_interfaces_map_;
-absl::flat_hash_map<const AccessibleInterface*, std::unique_ptr<AccessibilityAdapter>>
-    AccessibilityAdapter::managed_adapters_;
+AdapterRegistry& AdapterRegistry::Get() {
+  static AdapterRegistry registry;
+  static std::once_flag flag;
 
-void AccessibilityAdapter::Init() {
-  const static TeardownCheck teardown_check;
-  AccessibleInterfaceRegistry::Get().SetOnUnregisterCallback(
-      AccessibilityAdapter::OnInterfaceDeleted);
+  std::call_once(flag, []() {
+    AccessibleInterfaceRegistry::Get().SetOnUnregisterCallback(
+        [](AccessibleInterface* iface) { registry.OnInterfaceDeleted(iface); });
+  });
+
+  return registry;
+}
+
+QAccessibleInterface* AdapterRegistry::InterfaceWrapperFactory(const QString& classname,
+                                                               QObject* object) {
+  if (classname == QLatin1String("orbit_qt::OrbitGlInterfaceWrapper")) {
+    auto iface_obj = static_cast<OrbitGlInterfaceWrapper*>(object);
+    CHECK(!all_interfaces_map_.contains(iface_obj->GetInterface()));
+    auto wrapper = std::make_unique<OrbitGlInterfaceWrapper>(iface_obj->GetInterface());
+    QAccessibleInterface* result = new AccessibilityAdapter(iface_obj->GetInterface(), object);
+    RegisterAdapter(iface_obj->GetInterface(), result);
+    return result;
+  }
+
+  return nullptr;
 }
 
 /*
  * Callback fired when GlAccessibleInterfaces are deleted. This takes care of deleting only those
  * interfaces created by AccessibilityAdapter.
  */
-void AccessibilityAdapter::OnInterfaceDeleted(AccessibleInterface* iface) {
+void AdapterRegistry::OnInterfaceDeleted(AccessibleInterface* iface) {
   if (all_interfaces_map_.contains(iface)) {
     all_interfaces_map_.erase(iface);
   }
@@ -148,10 +157,7 @@ void AccessibilityAdapter::OnInterfaceDeleted(AccessibleInterface* iface) {
   }
 }
 
-QAccessibleInterface* AccessibilityAdapter::GetOrCreateAdapter(const AccessibleInterface* iface) {
-  static std::once_flag flag;
-  std::call_once(flag, Init);
-
+QAccessibleInterface* AdapterRegistry::GetOrCreateAdapter(const AccessibleInterface* iface) {
   if (iface == nullptr) {
     return nullptr;
   }
@@ -161,18 +167,19 @@ QAccessibleInterface* AccessibilityAdapter::GetOrCreateAdapter(const AccessibleI
     return it->second;
   }
 
-  auto adapter = std::unique_ptr<AccessibilityAdapter>(new AccessibilityAdapter(iface));
-  AccessibilityAdapter* ptr = adapter.get();
-  RegisterAdapter(iface, adapter.get());
-  managed_adapters_.emplace(iface, std::move(adapter));
-  return ptr;
+  auto wrapper = std::make_unique<OrbitGlInterfaceWrapper>(iface);
+  QAccessibleInterface* result = QAccessible::queryAccessibleInterface(wrapper.get());
+  CHECK(result != nullptr);
+  RegisterAdapter(iface, result);
+  managed_adapters_.emplace(iface, std::move(wrapper));
+  return result;
 }
 
 int AccessibilityAdapter::indexOfChild(const QAccessibleInterface* child) const {
   // This could be quite a bottleneck, I am not sure in which context
   // and how excessive this method is actually called.
   for (int i = 0; i < info_->AccessibleChildCount(); ++i) {
-    if (GetOrCreateAdapter(info_->AccessibleChild(i)) == child) {
+    if (AdapterRegistry::Get().GetOrCreateAdapter(info_->AccessibleChild(i)) == child) {
       return i;
     }
   }
@@ -227,7 +234,7 @@ OrbitGlWidgetAccessible::OrbitGlWidgetAccessible(OrbitGLWidget* widget)
    * check can't catch...
    */
   CHECK(widget->accessibleName() == "");
-  AccessibilityAdapter::RegisterAdapter(
+  AdapterRegistry::Get().RegisterAdapter(
       static_cast<OrbitGLWidget*>(widget)->GetCanvas()->GetOrCreateAccessibleInterface(), this);
 }
 
@@ -249,15 +256,15 @@ int OrbitGlWidgetAccessible::indexOfChild(const QAccessibleInterface* child) con
 }
 
 QAccessibleInterface* OrbitGlWidgetAccessible::child(int index) const {
-  return AccessibilityAdapter::GetOrCreateAdapter(static_cast<OrbitGLWidget*>(widget())
-                                                      ->GetCanvas()
-                                                      ->GetOrCreateAccessibleInterface()
-                                                      ->AccessibleChild(index));
+  return AdapterRegistry::Get().GetOrCreateAdapter(static_cast<OrbitGLWidget*>(widget())
+                                                       ->GetCanvas()
+                                                       ->GetOrCreateAccessibleInterface()
+                                                       ->AccessibleChild(index));
 }
 
 QAccessibleInterface* GlAccessibilityFactory(const QString& classname, QObject* object) {
   QAccessibleInterface* iface = nullptr;
-  if (classname == QLatin1String("OrbitGLWidget") && object && object->isWidgetType()) {
+  if (classname == QLatin1String("OrbitGLWidget") && object->isWidgetType()) {
     iface = static_cast<QAccessibleInterface*>(
         new OrbitGlWidgetAccessible(static_cast<OrbitGLWidget*>(object)));
   }
@@ -265,8 +272,13 @@ QAccessibleInterface* GlAccessibilityFactory(const QString& classname, QObject* 
   return iface;
 }
 
+QAccessibleInterface* WrapperAccessibilityFactory(const QString& classname, QObject* object) {
+  return AdapterRegistry::Get().InterfaceWrapperFactory(classname, object);
+}
+
 void InstallAccessibilityFactories() {
   QAccessible::installFactory(orbit_qt::GlAccessibilityFactory);
+  QAccessible::installFactory(WrapperAccessibilityFactory);
 }
 
 }  // namespace orbit_qt

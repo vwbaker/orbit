@@ -7,10 +7,6 @@
 #include <cstdint>
 #include <string>
 
-ABSL_FLAG(bool, enable_stale_features, false,
-          "Enable obsolete features that are not working or are not "
-          "implemented in the client's UI");
-
 ABSL_FLAG(bool, devmode, false, "Enable developer mode in the client's UI");
 
 ABSL_FLAG(bool, nodeploy, false, "Disable automatic deployment of OrbitService");
@@ -39,6 +35,3 @@ ABSL_FLAG(bool, show_return_values, false, "Show return values on time slices");
 
 ABSL_FLAG(bool, enable_tracepoint_feature, false,
           "Enable the setting of the panel of kernel tracepoints");
-
-// TODO(170468590): [ui beta] Remove this flag when the new UI is finished
-ABSL_FLAG(bool, enable_ui_beta, true, "Enable the new user interface");

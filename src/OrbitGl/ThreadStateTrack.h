@@ -23,7 +23,8 @@ class OrbitApp;
 
 class ThreadStateTrack final : public Track {
  public:
-  explicit ThreadStateTrack(TimeGraph* time_graph, int32_t thread_id, OrbitApp* app);
+  explicit ThreadStateTrack(TimeGraph* time_graph, int32_t thread_id, OrbitApp* app,
+                            CaptureData* capture_data);
   Type GetType() const override { return kThreadStateTrack; }
 
   void Draw(GlCanvas* canvas, PickingMode picking_mode, float z_offset) override;
@@ -31,7 +32,7 @@ class ThreadStateTrack final : public Track {
                         float z_offset) override;
 
   void OnPick(int x, int y) override;
-  void OnDrag(int, int) override {}
+  void OnDrag(int /*x*/, int /*y*/) override {}
   void OnRelease() override { picked_ = false; };
   float GetHeight() const override { return size_[1]; }
 

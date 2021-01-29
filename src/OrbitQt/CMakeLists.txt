@@ -22,25 +22,22 @@ target_sources(
           ElidedLabel.h
           Error.h
           EventLoop.h
+          FilterPanelWidget.h
+          FilterPanelWidgetAction.h
           orbitaboutdialog.h
-          orbitcodeeditor.h
           orbitdataviewpanel.h
-          orbitdisassemblydialog.h
           orbiteventiterator.h
           orbitglwidget.h
           orbitlivefunctions.h
           orbitmainwindow.h
           orbitsamplingreport.h
-          OrbitStartupWindow.h
           orbittablemodel.h
           orbittreeview.h
           opengldetect.h
           ProcessItemModel.h
           OverlayWidget.h
-          processlauncherwidget.h
           ProfilingTargetDialog.h
           resource.h
-          RingBuffer.h
           servicedeploymanager.h
           TargetConfiguration.h
           TutorialContent.h
@@ -58,17 +55,16 @@ target_sources(
           ConnectToStadiaWidget.ui
           Error.cpp
           ElidedLabel.cpp
+          FilterPanelWidget.cpp
+          FilterPanelWidgetAction.cpp
           MainThreadExecutorImpl.cpp
           StatusListenerImpl.cpp
           DeploymentConfigurations.cpp
           main.cpp
           orbitaboutdialog.cpp
           orbitaboutdialog.ui
-          orbitcodeeditor.cpp
           orbitdataviewpanel.cpp
           orbitdataviewpanel.ui
-          orbitdisassemblydialog.cpp
-          orbitdisassemblydialog.ui
           orbiteventiterator.cpp
           orbiteventiterator.ui
           orbitglwidget.cpp
@@ -78,15 +74,12 @@ target_sources(
           orbitmainwindow.ui
           orbitsamplingreport.cpp
           orbitsamplingreport.ui
-          OrbitStartupWindow.cpp
           orbittablemodel.cpp
           orbittreeview.cpp
           opengldetect.cpp
           ProcessItemModel.cpp
           OverlayWidget.cpp
           OverlayWidget.ui
-          processlauncherwidget.cpp
-          processlauncherwidget.ui
           ProfilingTargetDialog.cpp
           ProfilingTargetDialog.ui
           servicedeploymanager.cpp
@@ -104,15 +97,18 @@ target_include_directories(OrbitQt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(
   OrbitQt
-  PRIVATE MetricsUploader
+  PRIVATE CodeViewer
+          MetricsUploader
           OrbitAccessibility
           OrbitCore
           OrbitGl
           OrbitGgp
           OrbitSshQt
           OrbitVersion
+          QtUtils
           Qt5::Widgets
           Qt5::Core
+          SyntaxHighlighter
           qtpropertybrowser::qtpropertybrowser)
 
 if(WITH_CRASH_HANDLING)
@@ -168,9 +164,10 @@ target_sources(OrbitQtTests
         PRIVATE AccessibilityAdapter.cpp
                 AccessibilityAdapterTest.cpp
                 EventLoopTest.cpp
+                MainThreadExecutorImplTest.cpp
+                MainThreadExecutorImpl.cpp
                 ProcessItemModelTest.cpp
                 ProcessItemModel.cpp
-                RingBufferTest.cpp
                 StatusListenerImplTest.cpp
                 StatusListenerImpl.cpp
                 TutorialOverlayTest.cpp
@@ -186,6 +183,7 @@ target_link_libraries(
   PRIVATE OrbitAccessibility
           OrbitCore
           OrbitGl
+          QtUtils
           Qt5::Widgets
           Qt5::Core
           Qt5::Test

@@ -29,9 +29,6 @@
 
 // Hack: This is declared in a header we include here
 // and the definition needs to take place somewhere.
-ABSL_FLAG(bool, enable_stale_features, false,
-          "Enable obsolete features that are not working or are not "
-          "implemented in the client's UI");
 ABSL_FLAG(bool, devmode, false, "Enable developer mode in the client's UI");
 ABSL_FLAG(bool, local, false, "Connects to local instance of OrbitService");
 ABSL_FLAG(uint16_t, sampling_rate, 1000, "Frequency of callstack sampling in samples per second");
@@ -40,8 +37,6 @@ ABSL_FLAG(bool, enable_frame_pointer_validator, false, "Enable validation of fra
 ABSL_FLAG(bool, show_return_values, false, "Show return values on time slices");
 ABSL_FLAG(bool, enable_tracepoint_feature, false,
           "Enable the setting of the panel of kernel tracepoints");
-// TODO(170468590): Remove this flag when the new UI is finished
-ABSL_FLAG(bool, enable_ui_beta, true, "Enable the new user interface");
 
 DEFINE_PROTO_FUZZER(const orbit_client_protos::CaptureDeserializerFuzzerInfo& info) {
   std::string buffer{};
@@ -71,14 +66,12 @@ DEFINE_PROTO_FUZZER(const orbit_client_protos::CaptureDeserializerFuzzerInfo& in
   app->SetErrorMessageCallback([](const std::string& /*title*/, const std::string& /*text*/) {});
   app->SetRefreshCallback([](DataViewType /*type*/) {});
   app->SetSamplingReportCallback(
-      [](DataView* /*view*/, std::shared_ptr<SamplingReport> /*report*/) {});
+      [](DataView* /*view*/, const std::shared_ptr<SamplingReport>& /*report*/) {});
   app->SetTopDownViewCallback([](std::unique_ptr<CallTreeView> /*view*/) {});
   app->SetBottomUpViewCallback([](std::unique_ptr<CallTreeView> /*view*/) {});
 
-  TimeGraph time_graph{14, app.get()};
+  TimeGraph time_graph{app.get()};
   GCurrentTimeGraph = &time_graph;
-  auto string_manager = std::make_shared<StringManager>();
-  time_graph.SetStringManager(string_manager);
   app->ClearCapture();
 
   // NOLINTNEXTLINE

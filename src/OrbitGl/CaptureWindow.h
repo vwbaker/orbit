@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef ORBIT_GL_CAPTURE_WINDOW_H_
+#define ORBIT_GL_CAPTURE_WINDOW_H_
 
 #include <stdint.h>
 
@@ -22,7 +23,7 @@ class OrbitApp;
 
 class CaptureWindow : public GlCanvas {
  public:
-  explicit CaptureWindow(uint32_t font_size, OrbitApp* app);
+  explicit CaptureWindow(OrbitApp* app);
   ~CaptureWindow() override;
 
   void Initialize() override;
@@ -49,7 +50,7 @@ class CaptureWindow : public GlCanvas {
   void OnTimer() override;
   void Draw() override;
   void DrawScreenSpace() override;
-  void RenderImGui() override;
+  void RenderImGuiDebugUI() override;
   void RenderText(float layer) override;
   void PreRender() override;
   void PostRender() override;
@@ -81,7 +82,6 @@ class CaptureWindow : public GlCanvas {
   [[nodiscard]] virtual bool ShouldAutoZoom() const;
 
  protected:
-  uint32_t font_size_;
   TimeGraph time_graph_;
   bool draw_help_;
   bool draw_filter_;
@@ -96,3 +96,5 @@ class CaptureWindow : public GlCanvas {
   [[nodiscard]] std::unique_ptr<orbit_accessibility::AccessibleWidgetBridge>
   CreateAccessibilityInterface() override;
 };
+
+#endif  // ORBIT_GL_CAPTURE_WINDOW_H_

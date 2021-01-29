@@ -30,7 +30,7 @@ class LiveFunctionsDataView : public DataView {
   std::vector<std::string> GetContextMenu(int clicked_index,
                                           const std::vector<int>& selected_indices) override;
   std::string GetValue(int row, int column) override;
-  const std::optional<int> GetSelectedIndex() override;
+  std::optional<int> GetSelectedIndex() override;
   void UpdateSelectedFunctionId();
 
   void OnSelect(std::optional<int> row) override;
@@ -46,7 +46,7 @@ class LiveFunctionsDataView : public DataView {
   [[nodiscard]] uint64_t GetInstrumentedFunctionId(uint32_t row) const;
   [[nodiscard]] const orbit_client_protos::FunctionInfo& GetInstrumentedFunction(
       uint32_t row) const;
-  [[nodiscard]] const std::pair<TextBox*, TextBox*> GetMinMax(uint64_t function_id) const;
+  [[nodiscard]] std::pair<TextBox*, TextBox*> GetMinMax(uint64_t function_id) const;
 
   absl::flat_hash_map<uint64_t, orbit_client_protos::FunctionInfo> functions_;
 

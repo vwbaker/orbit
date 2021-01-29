@@ -21,9 +21,20 @@ using orbit_client_protos::TimerInfo;
 const Color kInactiveColor(100, 100, 100, 255);
 const Color kSelectionColor(0, 128, 255, 255);
 
-SchedulerTrack::SchedulerTrack(TimeGraph* time_graph, OrbitApp* app) : TimerTrack(time_graph, app) {
+SchedulerTrack::SchedulerTrack(TimeGraph* time_graph, OrbitApp* app, CaptureData* capture_data)
+    : TimerTrack(time_graph, app, capture_data) {
   SetPinned(false);
   SetName("Scheduler");
+  SetLabel("Scheduler (0 cores)");
+  num_cores_ = 0;
+}
+
+void SchedulerTrack::OnTimer(const orbit_client_protos::TimerInfo& timer_info) {
+  TimerTrack::OnTimer(timer_info);
+  if (num_cores_ <= static_cast<uint32_t>(timer_info.processor())) {
+    num_cores_ = timer_info.processor() + 1;
+    SetLabel(absl::StrFormat("Scheduler (%u cores)", num_cores_));
+  }
 }
 
 float SchedulerTrack::GetHeight() const {
@@ -35,9 +46,8 @@ float SchedulerTrack::GetHeight() const {
 
 bool SchedulerTrack::IsTimerActive(const TimerInfo& timer_info) const {
   bool is_same_tid_as_selected = timer_info.thread_id() == app_->selected_thread_id();
-  const CaptureData* capture_data = time_graph_->GetCaptureData();
-  CHECK(capture_data != nullptr);
-  int32_t capture_process_id = capture_data->process_id();
+  CHECK(capture_data_ != nullptr);
+  int32_t capture_process_id = capture_data_->process_id();
   bool is_same_pid_as_target =
       capture_process_id == 0 || capture_process_id == timer_info.process_id();
 
@@ -47,10 +57,11 @@ bool SchedulerTrack::IsTimerActive(const TimerInfo& timer_info) const {
 Color SchedulerTrack::GetTimerColor(const TimerInfo& timer_info, bool is_selected) const {
   if (is_selected) {
     return kSelectionColor;
-  } else if (!IsTimerActive(timer_info)) {
+  }
+  if (!IsTimerActive(timer_info)) {
     return kInactiveColor;
   }
-  return time_graph_->GetThreadColor(timer_info.thread_id());
+  return TimeGraph::GetThreadColor(timer_info.thread_id());
 }
 
 float SchedulerTrack::GetYFromTimer(const TimerInfo& timer_info) const {
@@ -74,8 +85,7 @@ std::string SchedulerTrack::GetBoxTooltip(PickingId id) const {
     return "";
   }
 
-  const CaptureData* capture_data = time_graph_->GetCaptureData();
-  CHECK(capture_data != nullptr);
+  CHECK(capture_data_ != nullptr);
   return absl::StrFormat(
       "<b>CPU Core activity</b><br/>"
       "<br/>"
@@ -83,8 +93,8 @@ std::string SchedulerTrack::GetBoxTooltip(PickingId id) const {
       "<b>Process:</b> %s [%d]<br/>"
       "<b>Thread:</b> %s [%d]<br/>",
       text_box->GetTimerInfo().processor(),
-      capture_data->GetThreadName(text_box->GetTimerInfo().process_id()),
+      capture_data_->GetThreadName(text_box->GetTimerInfo().process_id()),
       text_box->GetTimerInfo().process_id(),
-      capture_data->GetThreadName(text_box->GetTimerInfo().thread_id()),
+      capture_data_->GetThreadName(text_box->GetTimerInfo().thread_id()),
       text_box->GetTimerInfo().thread_id());
 }

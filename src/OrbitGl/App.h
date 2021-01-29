@@ -60,7 +60,6 @@
 #include "OrbitClientServices/TracepointServiceClient.h"
 #include "PresetLoadState.h"
 #include "PresetsDataView.h"
-#include "ProcessesDataView.h"
 #include "SamplingReport.h"
 #include "ScopedStatus.h"
 #include "StatusListener.h"
@@ -75,8 +74,8 @@
 
 class OrbitApp final : public DataViewFactory, public CaptureListener {
  public:
-  OrbitApp(MainThreadExecutor* main_thread_executor,
-           orbit_metrics_uploader::MetricsUploader* metrics_uploader = nullptr);
+  explicit OrbitApp(MainThreadExecutor* main_thread_executor,
+                    orbit_metrics_uploader::MetricsUploader* metrics_uploader = nullptr);
   ~OrbitApp() override;
 
   static std::unique_ptr<OrbitApp> Create(
@@ -169,8 +168,6 @@ class OrbitApp final : public DataViewFactory, public CaptureListener {
                                 const CaptureData& capture_data);
   void ClearSelectionBottomUpView();
 
-  bool SelectProcess(const std::string& process);
-
   // This needs to be called from the main thread.
   [[nodiscard]] bool IsCaptureConnected(const CaptureData& capture) const;
 
@@ -238,7 +235,8 @@ class OrbitApp final : public DataViewFactory, public CaptureListener {
   using RefreshCallback = std::function<void(DataViewType type)>;
   void SetRefreshCallback(RefreshCallback callback) { refresh_callback_ = std::move(callback); }
 
-  using SamplingReportCallback = std::function<void(DataView*, std::shared_ptr<SamplingReport>)>;
+  using SamplingReportCallback =
+      std::function<void(DataView*, const std::shared_ptr<SamplingReport>&)>;
   void SetSamplingReportCallback(SamplingReportCallback callback) {
     sampling_reports_callback_ = std::move(callback);
   }
@@ -261,7 +259,7 @@ class OrbitApp final : public DataViewFactory, public CaptureListener {
   }
   using TimerSelectedCallback = std::function<void(const orbit_client_protos::TimerInfo*)>;
   void SetTimerSelectedCallback(TimerSelectedCallback callback) {
-    timer_selected_callback_ = callback;
+    timer_selected_callback_ = std::move(callback);
   }
 
   using SaveFileCallback = std::function<std::string(const std::string& extension)>;
@@ -290,14 +288,15 @@ class OrbitApp final : public DataViewFactory, public CaptureListener {
   void SendWarningToUi(const std::string& title, const std::string& text);
   void SendErrorToUi(const std::string& title, const std::string& text);
   void NeedsRedraw();
-  void RenderImGui();
+  void RenderImGuiDebugUI();
 
   void LoadModules(
       const std::vector<ModuleData*>& modules,
       absl::flat_hash_map<std::string, std::vector<uint64_t>> function_hashes_to_hook_map = {},
       absl::flat_hash_map<std::string, std::vector<uint64_t>> frame_track_function_hashes_map = {});
-  // TODO(170468590): [ui beta] when out of ui beta, clean this up (it should not be necessary to
-  // have an argument here, since OrbitApp will always only have one process associated)
+  // TODO(177304549): This is still the way it is because of the old UI. Refactor: clean this up (it
+  // should not be necessary to have an argument here, since OrbitApp will always only have one
+  // process associated)
   void UpdateProcessAndModuleList(int32_t pid);
 
   void UpdateAfterSymbolLoading();
@@ -324,6 +323,7 @@ class OrbitApp final : public DataViewFactory, public CaptureListener {
   [[nodiscard]] DataView* GetOrCreateDataView(DataViewType type) override;
   [[nodiscard]] DataView* GetOrCreateSelectionCallstackDataView();
 
+  [[nodiscard]] StringManager* GetStringManager() { return string_manager_.get(); }
   [[nodiscard]] ProcessManager* GetProcessManager() { return process_manager_; }
   [[nodiscard]] ThreadPool* GetThreadPool() { return thread_pool_.get(); }
   [[nodiscard]] MainThreadExecutor* GetMainThreadExecutor() { return main_thread_executor_; }
@@ -456,7 +456,6 @@ class OrbitApp final : public DataViewFactory, public CaptureListener {
 
   std::vector<DataView*> panels_;
 
-  std::unique_ptr<ProcessesDataView> processes_data_view_;
   std::unique_ptr<ModulesDataView> modules_data_view_;
   std::unique_ptr<FunctionsDataView> functions_data_view_;
   std::unique_ptr<CallStackDataView> callstack_data_view_;

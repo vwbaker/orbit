@@ -7,7 +7,6 @@
 #include <imgui.h>
 
 TimeGraphLayout::TimeGraphLayout() {
-  num_cores_ = 0;
   text_box_height_ = 20.f;
   core_height_ = 10.f;
   thread_state_track_height_ = 4.0f;
@@ -34,6 +33,7 @@ TimeGraphLayout::TimeGraphLayout() {
   toolbar_icon_height_ = 24.f;
   scale_ = 1.f;
   time_bar_height_ = 15.f;
+  font_size_ = 14;
 };
 
 #define FLOAT_SLIDER(x) FLOAT_SLIDER_MIN_MAX(x, 0, 100.f)

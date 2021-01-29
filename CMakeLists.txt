@@ -26,7 +26,6 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   set(STRICT_COMPILE_FLAGS -Werror=all
-                           -Werror=defaulted-function-deleted
                            -Werror=float-conversion
                            -Werror=format=2
                            -Werror=ignored-attributes
@@ -37,6 +36,11 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
                            -Werror=unused-variable
                            -Werror=writable-strings
                            -Werror=sign-compare)
+
+  if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 8)
+    list(APPEND STRICT_COMPILE_FLAGS -Werror=defaulted-function-deleted)
+  endif()
+
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   set(STRICT_COMPILE_FLAGS -Werror=all
                            -Werror=float-conversion
@@ -117,7 +121,7 @@ endif()
 
 find_package(Filesystem REQUIRED)
 
-if(NOT WIN32)
+if(NOT WIN32 AND WITH_VULKAN_LAYER)
   find_package(Vulkan REQUIRED)
   find_package(VulkanValidationLayers REQUIRED)
 endif()
@@ -130,31 +134,32 @@ add_definitions(-DUNICODE -D_UNICODE)
 if(WIN32)
   add_definitions(-DWIN32)
 else()
+  add_subdirectory(src/LinuxTracing)
   add_subdirectory(src/OrbitClientGgp)
   add_subdirectory(src/OrbitCaptureGgpClient)
   add_subdirectory(src/OrbitCaptureGgpService)
-  add_subdirectory(src/OrbitLinuxTracing)
   add_subdirectory(src/OrbitProducer)
-  add_subdirectory(src/OrbitProducerSideChannel)
-  add_subdirectory(src/OrbitService)
-  add_subdirectory(src/OrbitTriggerCaptureVulkanLayer)
+  add_subdirectory(src/ProducerSideChannel)
+  add_subdirectory(src/Service)
 endif()
 
 if(WITH_VULKAN_LAYER)
+  add_subdirectory(src/OrbitTriggerCaptureVulkanLayer)
   add_subdirectory(src/OrbitVulkanLayer)
 endif()
 
-add_subdirectory(src/OrbitAccessibility)
+add_subdirectory(src/ClientProtos)
 add_subdirectory(src/ElfUtils)
+add_subdirectory(src/FramePointerValidator)
+add_subdirectory(src/GrpcProtos)
+add_subdirectory(src/MetricsUploader)
+add_subdirectory(src/OrbitAccessibility)
 add_subdirectory(src/OrbitBase)
 add_subdirectory(src/OrbitCaptureClient)
 add_subdirectory(src/OrbitClientData)
 add_subdirectory(src/OrbitClientModel)
-add_subdirectory(src/OrbitClientProtos)
 add_subdirectory(src/OrbitClientServices)
 add_subdirectory(src/OrbitCore)
-add_subdirectory(src/OrbitFramePointerValidator)
-add_subdirectory(src/OrbitGrpcProtos)
 add_subdirectory(src/OrbitTest)
 add_subdirectory(src/OrbitVersion)
 
@@ -163,11 +168,14 @@ if(WITH_ORBITGL)
 endif()
 
 if(WITH_GUI)
-  add_subdirectory(src/MetricsUploader)
+  add_subdirectory(src/CodeViewer)
+  add_subdirectory(src/CodeViewerDemo)
   add_subdirectory(src/OrbitGgp)
   add_subdirectory(src/OrbitSsh)
   add_subdirectory(src/OrbitSshQt)
   add_subdirectory(src/OrbitQt)
+  add_subdirectory(src/QtUtils)
+  add_subdirectory(src/SyntaxHighlighter)
   add_subdirectory(src/WebEngine)
   add_subdirectory(src/WebUI)
 endif()
@@ -196,6 +204,7 @@ file(COPY third_party/OpenSSL/LICENSE DESTINATION ${CMAKE_BINARY_DIR}/licenses/o
 file(COPY third_party/qtpropertybrowser/LICENSE.txt DESTINATION ${CMAKE_BINARY_DIR}/licenses/qtpropertybrowser/licenses/)
 file(COPY third_party/conan/LICENSE.md DESTINATION ${CMAKE_BINARY_DIR}/licenses/conan/licenses/)
 file(COPY third_party/stb/LICENSE DESTINATION ${CMAKE_BINARY_DIR}/licenses/stb/licenses/)
+file(COPY third_party/vulkan/LICENSE.txt DESTINATION ${CMAKE_BINARY_DIR}/licenses/vulkan/licenses/)
 file(REMOVE ${CMAKE_BINARY_DIR}/licenses/freetype/licenses/LICENSE.TXT)
 file(REMOVE ${CMAKE_BINARY_DIR}/licenses/freetype/licenses/GPLv2.TXT)
 

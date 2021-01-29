@@ -21,19 +21,27 @@ target_include_directories(OrbitBase PRIVATE
 target_sources(OrbitBase PRIVATE
         include/OrbitBase/Action.h
         include/OrbitBase/ExecutablePath.h
-        include/OrbitBase/ReadFileToString.h
+        include/OrbitBase/Future.h
+        include/OrbitBase/FutureHelpers.h
+        include/OrbitBase/JoinFutures.h
         include/OrbitBase/Logging.h
         include/OrbitBase/MakeUniqueForOverwrite.h
+        include/OrbitBase/GetProcessIds.h
         include/OrbitBase/Profiling.h
-        include/OrbitBase/UniqueResource.h
+        include/OrbitBase/Promise.h
+        include/OrbitBase/PromiseHelpers.h
+        include/OrbitBase/ReadFileToString.h
+        include/OrbitBase/SafeStrerror.h
+        include/OrbitBase/SharedState.h
         include/OrbitBase/ThreadConstants.h
         include/OrbitBase/ThreadPool.h
         include/OrbitBase/ThreadUtils.h
         include/OrbitBase/Tracing.h
-        include/OrbitBase/SafeStrerror.h)
+        include/OrbitBase/UniqueResource.h)
 
 target_sources(OrbitBase PRIVATE
         ExecutablePath.cpp
+        JoinFutures.cpp
         ReadFileToString.cpp
         Logging.cpp
         SafeStrerror.cpp
@@ -47,6 +55,7 @@ target_sources(OrbitBase PRIVATE
 else()
 target_sources(OrbitBase PRIVATE
         ExecutablePathLinux.cpp
+        GetProcessIdsLinux.cpp
         ThreadUtilsLinux.cpp)
 endif()
 
@@ -62,9 +71,14 @@ target_compile_options(OrbitBaseTests PRIVATE ${STRICT_COMPILE_FLAGS})
 
 target_sources(OrbitBaseTests PRIVATE
         ExecutablePathTest.cpp
+        FutureTest.cpp
+        FutureHelpersTest.cpp
+        JoinFuturesTest.cpp
         ReadFileToStringTest.cpp
         OrbitApiTest.cpp
         ProfilingTest.cpp
+        PromiseTest.cpp
+        PromiseHelpersTest.cpp
         ThreadUtilsTest.cpp
         TracingTest.cpp
         UniqueResourceTest.cpp
@@ -72,7 +86,8 @@ target_sources(OrbitBaseTests PRIVATE
 
 if (NOT WIN32)
 target_sources(OrbitBaseTests PRIVATE
-        ExecutablePathLinuxTest.cpp)
+        ExecutablePathLinuxTest.cpp
+        GetProcessIdsLinuxTest.cpp)
 endif()
 
 # Threadpool test contains some sleeps we couldn't work around - disable them on the CI

@@ -5,12 +5,6 @@
 #include "orbitmainwindow.h"
 
 #include <absl/flags/declare.h>
-#include <absl/time/time.h>
-#include <grpc/impl/codegen/gpr_types.h>
-#include <grpc/support/time.h>
-#include <grpcpp/grpcpp.h>
-#include <grpcpp/security/credentials.h>
-#include <grpcpp/support/channel_arguments.h>
 
 #include <QAction>
 #include <QApplication>
@@ -47,6 +41,7 @@
 #include <QTabBar>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <QToolTip>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -57,12 +52,15 @@
 #include <filesystem>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <variant>
 
 #include "App.h"
 #include "CallTreeWidget.h"
 #include "CaptureOptionsDialog.h"
+#include "CodeViewer/Dialog.h"
+#include "CodeViewer/FontSizeInEm.h"
 #include "Connections.h"
 #include "DataViewFactory.h"
 #include "GlCanvas.h"
@@ -77,34 +75,31 @@
 #include "OrbitClientData/ProcessData.h"
 #include "OrbitClientModel/CaptureData.h"
 #include "OrbitClientModel/CaptureSerializer.h"
+#include "OrbitClientServices/ProcessManager.h"
 #include "OrbitGgp/Instance.h"
 #include "OrbitVersion/OrbitVersion.h"
 #include "Path.h"
 #include "SamplingReport.h"
 #include "StatusListenerImpl.h"
+#include "SyntaxHighlighter/X86Assembly.h"
 #include "TargetConfiguration.h"
 #include "TutorialContent.h"
 #include "absl/flags/flag.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "orbitaboutdialog.h"
-#include "orbitcodeeditor.h"
 #include "orbitdataviewpanel.h"
-#include "orbitdisassemblydialog.h"
 #include "orbitglwidget.h"
 #include "orbitlivefunctions.h"
 #include "orbitsamplingreport.h"
-#include "processlauncherwidget.h"
 #include "servicedeploymanager.h"
 #include "services.pb.h"
 #include "types.h"
 #include "ui_orbitmainwindow.h"
 
-ABSL_DECLARE_FLAG(bool, enable_stale_features);
 ABSL_DECLARE_FLAG(bool, devmode);
 ABSL_DECLARE_FLAG(bool, enable_tracepoint_feature);
 ABSL_DECLARE_FLAG(bool, enable_tutorials_feature);
-ABSL_DECLARE_FLAG(bool, enable_ui_beta);
 
 using orbit_grpc_protos::CrashOrbitServiceRequest_CrashType;
 using orbit_grpc_protos::CrashOrbitServiceRequest_CrashType_CHECK_FALSE;
@@ -126,21 +121,42 @@ const QString kTargetLabelDefaultStyleSheet = "#TargetLabel { color: %1; }";
 const QString kTargetLabelColorConnected = "#66BB6A";
 const QString kTargetLabelColorFileTarget = "#BDBDBD";
 const QString kTargetLabelColorTargetProcessDied = "orange";
+
+void OpenDisassembly(const std::string& assembly, const DisassemblyReport& report) {
+  orbit_code_viewer::Dialog dialog{};
+  dialog.setWindowTitle("Orbit Disassembly");
+  dialog.SetEnableLineNumbers(true);
+
+  auto syntax_highlighter = std::make_unique<orbit_syntax_highlighter::X86Assembly>();
+  dialog.SetSourceCode(QString::fromStdString(assembly), std::move(syntax_highlighter));
+
+  constexpr orbit_code_viewer::FontSizeInEm kHeatmapAreaWidth{1.3f};
+  dialog.SetHeatmap(kHeatmapAreaWidth, [&report](int line_number) {
+    if (report.GetNumSamples() == 0) return 0.0f;
+
+    return static_cast<float>(report.GetNumSamplesAtLine(line_number)) /
+           static_cast<float>(report.GetNumSamples());
+  });
+
+  dialog.exec();
+}
 }  // namespace
 
 OrbitMainWindow::OrbitMainWindow(orbit_qt::TargetConfiguration target_configuration,
-                                 uint32_t font_size)
+                                 orbit_metrics_uploader::MetricsUploader* metrics_uploader)
     : QMainWindow(nullptr),
-      main_thread_executor_{CreateMainThreadExecutor()},
-      app_{OrbitApp::Create(main_thread_executor_.get())},
+      main_thread_executor_{orbit_qt::MainThreadExecutorImpl::Create()},
+      app_{OrbitApp::Create(main_thread_executor_.get(), metrics_uploader)},
       ui(new Ui::OrbitMainWindow),
       target_configuration_(std::move(target_configuration)) {
-  SetupMainWindow(font_size);
+  SetupMainWindow();
 
   SetupTargetLabel();
   SetupHintFrame();
 
   ui->RightTabWidget->setTabText(ui->RightTabWidget->indexOf(ui->FunctionsTab), "Symbols");
+
+  // TODO (177304549): This next line is still here from the old UI. Remove ui->HomeTab completely
   ui->MainTabWidget->removeTab(ui->MainTabWidget->indexOf(ui->HomeTab));
 
   // remove Functions list from position 0,0
@@ -171,24 +187,19 @@ OrbitMainWindow::OrbitMainWindow(orbit_qt::TargetConfiguration target_configurat
                               /*is_main_instance=*/true, /*uniform_row_height=*/false,
                               /*text_alignment=*/Qt::AlignTop | Qt::AlignLeft);
 
-  // TODO(170468590): [ui beta] When out of ui beta, target_configuration_ should not be an optional
-  // anymore, and this CHECK and convenience local variable are not needed anymore.
-  CHECK(target_configuration_.has_value());
-  const orbit_qt::TargetConfiguration& target = target_configuration_.value();
-
-  std::visit([this](const auto& target) { SetTarget(target); }, target);
+  std::visit([this](const auto& target) { SetTarget(target); }, target_configuration_);
 
   app_->PostInit();
 
   SaveCurrentTabLayoutAsDefaultInMemory();
 
-  // TODO(170468590): [ui beta] Currently a call to OpenCapture() needs to happen after
-  // OrbitApp::PostInit(). As soon as PostInit() is cleaned up (see todo comments
-  // in PostInit), it should be called before std::visit and then OpenCapture can be called
-  // inside SetTarget(FileTarget).
+  // TODO(177304549): This is still the way it is because of the old UI. Refactor:
+  // As soon as PostInit() is cleaned up (see todo comments in PostInit), it should be called before
+  // std::visit and then OpenCapture can be called inside SetTarget(FileTarget).
   std::string file_path_to_open;
-  if (std::holds_alternative<orbit_qt::FileTarget>(target)) {
-    OpenCapture(std::get<orbit_qt::FileTarget>(target).GetCaptureFilePath().string());
+  if (std::holds_alternative<orbit_qt::FileTarget>(target_configuration_)) {
+    OpenCapture(
+        std::get<orbit_qt::FileTarget>(target_configuration_).GetCaptureFilePath().string());
   }
 
   UpdateCaptureStateDependentWidgets();
@@ -196,46 +207,7 @@ OrbitMainWindow::OrbitMainWindow(orbit_qt::TargetConfiguration target_configurat
   LoadCaptureOptionsIntoApp();
 }
 
-OrbitMainWindow::OrbitMainWindow(orbit_qt::ServiceDeployManager* service_deploy_manager,
-                                 std::string grpc_server_address, uint32_t font_size,
-                                 orbit_metrics_uploader::MetricsUploader* metrics_uploader)
-    : QMainWindow(nullptr),
-      main_thread_executor_{CreateMainThreadExecutor()},
-      app_{OrbitApp::Create(main_thread_executor_.get(), metrics_uploader)},
-      ui(new Ui::OrbitMainWindow) {
-  SetupMainWindow(font_size);
-
-  app_->SetSecureCopyCallback([service_deploy_manager](std::string_view source,
-                                                       std::string_view destination) {
-    CHECK(service_deploy_manager != nullptr);
-    return service_deploy_manager->CopyFileToLocal(std::string{source}, std::string{destination});
-  });
-
-  DataViewFactory* data_view_factory = app_.get();
-  ui->ProcessesList->SetDataView(data_view_factory->GetOrCreateDataView(DataViewType::kProcesses));
-
-  ui->ModulesList->Initialize(data_view_factory->GetOrCreateDataView(DataViewType::kModules),
-                              SelectionType::kExtended, FontType::kDefault);
-  ui->FunctionsList->Initialize(data_view_factory->GetOrCreateDataView(DataViewType::kFunctions),
-                                SelectionType::kExtended, FontType::kDefault);
-  ui->SessionList->Initialize(data_view_factory->GetOrCreateDataView(DataViewType::kPresets),
-                              SelectionType::kDefault, FontType::kDefault,
-                              /*is_main_instance=*/true, /*uniform_row_height=*/false,
-                              /*text_alignment=*/Qt::AlignTop | Qt::AlignLeft);
-
-  ui->actionEnd_Session->setVisible(false);
-
-  SetupGrpcAndProcessManager(grpc_server_address);
-
-  app_->PostInit();
-
-  SaveCurrentTabLayoutAsDefaultInMemory();
-  UpdateCaptureStateDependentWidgets();
-
-  LoadCaptureOptionsIntoApp();
-}
-
-void OrbitMainWindow::SetupMainWindow(uint32_t font_size) {
+void OrbitMainWindow::SetupMainWindow() {
   DataViewFactory* data_view_factory = app_.get();
 
   ui->setupUi(this);
@@ -329,13 +301,13 @@ void OrbitMainWindow::SetupMainWindow(uint32_t font_size) {
   });
 
   app_->SetSamplingReportCallback(
-      [this](DataView* callstack_data_view, std::shared_ptr<SamplingReport> report) {
-        this->OnNewSamplingReport(callstack_data_view, std::move(report));
+      [this](DataView* callstack_data_view, const std::shared_ptr<SamplingReport>& report) {
+        this->OnNewSamplingReport(callstack_data_view, report);
       });
 
   app_->SetSelectionReportCallback(
-      [this](DataView* callstack_data_view, std::shared_ptr<SamplingReport> report) {
-        this->OnNewSelectionReport(callstack_data_view, std::move(report));
+      [this](DataView* callstack_data_view, const std::shared_ptr<SamplingReport>& report) {
+        this->OnNewSelectionReport(callstack_data_view, report);
       });
 
   app_->SetTopDownViewCallback([this](std::unique_ptr<CallTreeView> top_down_view) {
@@ -357,9 +329,7 @@ void OrbitMainWindow::SetupMainWindow(uint32_t font_size) {
       });
 
   app_->SetSelectLiveTabCallback([this] { ui->RightTabWidget->setCurrentWidget(ui->liveTab); });
-  app_->SetDisassemblyCallback([this](std::string disassembly, DisassemblyReport report) {
-    OpenDisassembly(std::move(disassembly), std::move(report));
-  });
+  app_->SetDisassemblyCallback(&OpenDisassembly);
   app_->SetErrorMessageCallback([this](const std::string& title, const std::string& text) {
     QMessageBox::critical(this, QString::fromStdString(title), QString::fromStdString(text));
   });
@@ -379,32 +349,22 @@ void OrbitMainWindow::SetupMainWindow(uint32_t font_size) {
   app_->SetShowEmptyFrameTrackWarningCallback(
       [this](std::string_view function) { this->ShowEmptyFrameTrackWarningIfNeeded(function); });
 
-  ui->CaptureGLWidget->Initialize(GlCanvas::CanvasType::kCaptureWindow, this, font_size,
-                                  app_.get());
+  ui->CaptureGLWidget->Initialize(GlCanvas::CanvasType::kCaptureWindow, this, app_.get());
 
   app_->SetTimerSelectedCallback([this](const orbit_client_protos::TimerInfo* timer_info) {
     OnTimerSelectionChanged(timer_info);
   });
 
   if (absl::GetFlag(FLAGS_devmode)) {
-    ui->debugOpenGLWidget->Initialize(GlCanvas::CanvasType::kDebug, this, font_size, app_.get());
+    ui->debugOpenGLWidget->Initialize(GlCanvas::CanvasType::kDebug, this, app_.get());
     app_->SetDebugCanvas(ui->debugOpenGLWidget->GetCanvas());
   } else {
     ui->RightTabWidget->removeTab(ui->RightTabWidget->indexOf(ui->debugTab));
   }
 
-  ui->CallStackView->Initialize(data_view_factory->GetOrCreateDataView(DataViewType::kCallstack),
-                                SelectionType::kExtended, FontType::kDefault);
   ui->TracepointsList->Initialize(
       data_view_factory->GetOrCreateDataView(DataViewType::kTracepoints), SelectionType::kExtended,
       FontType::kDefault);
-
-  SetupCodeView();
-
-  if (!absl::GetFlag(FLAGS_enable_stale_features)) {
-    ui->RightTabWidget->removeTab(ui->RightTabWidget->indexOf(ui->CallStackTab));
-    ui->RightTabWidget->removeTab(ui->RightTabWidget->indexOf(ui->CodeTab));
-  }
 
   if (!absl::GetFlag(FLAGS_enable_tracepoint_feature)) {
     ui->RightTabWidget->removeTab(ui->RightTabWidget->indexOf(ui->tracepointsTab));
@@ -462,25 +422,17 @@ void OrbitMainWindow::SetupCaptureToolbar() {
   // Create missing icons
   icon_start_capture_ = QIcon(":/actions/play_arrow");
   icon_stop_capture_ = QIcon(":/actions/stop");
+  icon_toolbar_extension_ = QIcon(":/actions/double_arrows");
 
   // Attach the filter panel to the toolbar
   toolbar->addWidget(CreateSpacer(toolbar));
-  toolbar->addWidget(ui->filterPanel);
-
-  // Timer
-  toolbar->addWidget(CreateSpacer(toolbar));
-  QFontMetrics fm(ui->timerLabel->font());
-  int pixel_width = fm.width("w");
-  ui->timerLabel->setMinimumWidth(5 * pixel_width);
-}
-
-void OrbitMainWindow::SetupCodeView() {
-  ui->CodeTextEdit->SetEditorType(OrbitCodeEditor::CODE_VIEW);
-  ui->FileMappingTextEdit->SetEditorType(OrbitCodeEditor::FILE_MAPPING);
-  ui->FileMappingTextEdit->SetSaveButton(ui->SaveFileMapping);
-  ui->CodeTextEdit->SetFindLineEdit(ui->lineEdit);
-  ui->FileMappingWidget->hide();
-  OrbitCodeEditor::setFileMappingWidget(ui->FileMappingWidget);
+  filter_panel_action_ = new FilterPanelWidgetAction(toolbar);
+  connect(filter_panel_action_, &FilterPanelWidgetAction::FilterTracksTextChanged, this,
+          &OrbitMainWindow::OnFilterTracksTextChanged);
+  connect(filter_panel_action_, &FilterPanelWidgetAction::FilterFunctionsTextChanged, this,
+          &OrbitMainWindow::OnFilterFunctionsTextChanged);
+  toolbar->addAction(filter_panel_action_);
+  toolbar->findChild<QToolButton*>("qt_toolbar_ext_button")->setIcon(icon_toolbar_extension_);
 }
 
 void OrbitMainWindow::SetupHintFrame() {
@@ -547,10 +499,9 @@ void OrbitMainWindow::SaveCurrentTabLayoutAsDefaultInMemory() {
   default_tab_layout_.clear();
   std::array<QTabWidget*, 2> tab_widgets = {ui->MainTabWidget, ui->RightTabWidget};
   for (QTabWidget* tab_widget : tab_widgets) {
-    TabWidgetLayout layout;
+    TabWidgetLayout layout = {};
     for (int i = 0; i < tab_widget->count(); ++i) {
-      layout.tabs_and_titles.push_back(
-          std::make_pair(tab_widget->widget(i), tab_widget->tabText(i)));
+      layout.tabs_and_titles.emplace_back(tab_widget->widget(i), tab_widget->tabText(i));
     }
     layout.current_index = tab_widget->currentIndex();
     default_tab_layout_[tab_widget] = layout;
@@ -604,19 +555,8 @@ void OrbitMainWindow::UpdateCaptureStateDependentWidgets() {
   const bool is_connected = app_->IsConnectedToInstance();
   CaptureClient::State capture_state = app_->GetCaptureState();
   const bool is_capturing = capture_state != CaptureClient::State::kStopped;
+  const bool is_target_process_running = target_process_state_ == TargetProcessState::kRunning;
 
-  // The detection mechanism is only implemented for the new UI, so we maintain
-  // the old behaviour for the old UI and assume the target process is always running.
-  // TODO (170468590): [ui beta] This can be renamed to is_target_process_running when
-  // the feature flag gets removed.
-  const bool assume_target_process_is_running =
-      (!absl::GetFlag(FLAGS_enable_ui_beta)) ||
-      target_process_state_ == TargetProcessState::kRunning;
-
-  if (!absl::GetFlag(FLAGS_enable_ui_beta)) {
-    set_tab_enabled(ui->HomeTab, true);
-    ui->HomeTab->setEnabled(!is_capturing);
-  }
   set_tab_enabled(ui->FunctionsTab, true);
   set_tab_enabled(ui->CaptureTab, true);
   set_tab_enabled(ui->liveTab, has_data);
@@ -629,7 +569,7 @@ void OrbitMainWindow::UpdateCaptureStateDependentWidgets() {
 
   ui->actionToggle_Capture->setEnabled(
       capture_state == CaptureClient::State::kStarted ||
-      (capture_state == CaptureClient::State::kStopped && assume_target_process_is_running));
+      (capture_state == CaptureClient::State::kStopped && is_target_process_running));
   ui->actionToggle_Capture->setIcon(is_capturing ? icon_stop_capture_ : icon_start_capture_);
   ui->actionClear_Capture->setEnabled(!is_capturing && has_data);
   ui->actionCaptureOptions->setEnabled(!is_capturing);
@@ -638,11 +578,7 @@ void OrbitMainWindow::UpdateCaptureStateDependentWidgets() {
   ui->actionOpen_Preset->setEnabled(!is_capturing && is_connected);
   ui->actionSave_Preset_As->setEnabled(!is_capturing);
 
-  // TODO (170468590): [ui beta] Remove this "if", it will not be necessary anymore when ui is out
-  // of beta
-  if (hint_frame_ != nullptr) {
-    hint_frame_->setVisible(!has_data);
-  }
+  hint_frame_->setVisible(!has_data);
 
   // Gray out disabled actions on the capture toolbar.
   for (QAction* action : ui->capture_toolbar->actions()) {
@@ -653,6 +589,18 @@ void OrbitMainWindow::UpdateCaptureStateDependentWidgets() {
     effect->setOpacity(action->isEnabled() ? 1 : 0.3);
     ui->capture_toolbar->widgetForAction(action)->setGraphicsEffect(effect);
   }
+}
+
+void OrbitMainWindow::UpdateProcessConnectionStateDependentWidgets() {
+  CaptureClient::State capture_state = app_->GetCaptureState();
+  const bool is_capturing = capture_state != CaptureClient::State::kStopped;
+  const bool is_connected = app_->IsConnectedToInstance();
+  const bool is_target_process_running = target_process_state_ == TargetProcessState::kRunning;
+
+  ui->actionToggle_Capture->setEnabled(
+      capture_state == CaptureClient::State::kStarted ||
+      (capture_state == CaptureClient::State::kStopped && is_target_process_running));
+  ui->actionOpen_Preset->setEnabled(!is_capturing && is_connected);
 }
 
 void OrbitMainWindow::UpdateActiveTabsAfterSelection(bool selection_has_samples) {
@@ -722,7 +670,6 @@ OrbitMainWindow::~OrbitMainWindow() {
   ui->selectionTopDownWidget->Deinitialize();
   ui->topDownWidget->Deinitialize();
   ui->TracepointsList->Deinitialize();
-  ui->CallStackView->Deinitialize();
   ui->liveFunctions->Deinitialize();
 
   ui->samplingReport->Deinitialize();
@@ -736,7 +683,6 @@ OrbitMainWindow::~OrbitMainWindow() {
   ui->SessionList->Deinitialize();
   ui->FunctionsList->Deinitialize();
   ui->ModulesList->Deinitialize();
-  ui->ProcessesList->ClearDataView();
 
   delete ui;
 }
@@ -753,9 +699,6 @@ void OrbitMainWindow::OnRefreshDataViewPanels(DataViewType a_Type) {
 
 void OrbitMainWindow::UpdatePanel(DataViewType a_Type) {
   switch (a_Type) {
-    case DataViewType::kCallstack:
-      ui->CallStackView->Refresh();
-      break;
     case DataViewType::kFunctions:
       ui->FunctionsList->Refresh();
       break;
@@ -764,11 +707,6 @@ void OrbitMainWindow::UpdatePanel(DataViewType a_Type) {
       break;
     case DataViewType::kModules:
       ui->ModulesList->Refresh();
-      break;
-    case DataViewType::kProcesses:
-      if (!absl::GetFlag(FLAGS_enable_ui_beta)) {
-        ui->ProcessesList->Refresh();
-      }
       break;
     case DataViewType::kPresets:
       ui->SessionList->Refresh();
@@ -785,7 +723,7 @@ void OrbitMainWindow::UpdatePanel(DataViewType a_Type) {
 }
 
 void OrbitMainWindow::OnNewSamplingReport(DataView* callstack_data_view,
-                                          std::shared_ptr<SamplingReport> sampling_report) {
+                                          const std::shared_ptr<SamplingReport>& sampling_report) {
   ui->samplingGridLayout->removeWidget(ui->samplingReport);
   delete ui->samplingReport;
 
@@ -808,13 +746,13 @@ void OrbitMainWindow::OnNewSamplingReport(DataView* callstack_data_view,
 }
 
 void OrbitMainWindow::OnNewSelectionReport(DataView* callstack_data_view,
-                                           std::shared_ptr<SamplingReport> sampling_report) {
+                                           const std::shared_ptr<SamplingReport>& sampling_report) {
   ui->selectionGridLayout->removeWidget(ui->selectionReport);
   delete ui->selectionReport;
   bool has_samples = sampling_report->HasSamples();
 
   ui->selectionReport = new OrbitSamplingReport(ui->selectionSamplingTab);
-  ui->selectionReport->Initialize(callstack_data_view, std::move(sampling_report));
+  ui->selectionReport->Initialize(callstack_data_view, sampling_report);
   ui->selectionGridLayout->addWidget(ui->selectionReport, 0, 0, 1, 1);
 
   UpdateActiveTabsAfterSelection(has_samples);
@@ -908,7 +846,7 @@ void OrbitMainWindow::OnTimer() {
     gl_widget->update();
   }
 
-  ui->timerLabel->setText(QString::fromStdString(app_->GetCaptureTime()));
+  filter_panel_action_->SetTimerLabelText(QString::fromStdString(app_->GetCaptureTime()));
 }
 
 void OrbitMainWindow::OnFilterFunctionsTextChanged(const QString& text) {
@@ -918,9 +856,7 @@ void OrbitMainWindow::OnFilterFunctionsTextChanged(const QString& text) {
 
 void OrbitMainWindow::OnLiveTabFunctionsFilterTextChanged(const QString& text) {
   // Set main toolbar functions filter without triggering signals.
-  ui->filterFunctions->blockSignals(true);
-  ui->filterFunctions->setText(text);
-  ui->filterFunctions->blockSignals(false);
+  filter_panel_action_->SetFilterFunctionsText(text);
 }
 
 void OrbitMainWindow::OnFilterTracksTextChanged(const QString& text) {
@@ -951,15 +887,6 @@ void OrbitMainWindow::on_actionEnd_Session_triggered() {
 void OrbitMainWindow::on_actionQuit_triggered() {
   close();
   QApplication::quit();
-}
-
-QPixmap QtGrab(OrbitMainWindow* a_Window) {
-  QPixmap pixMap = a_Window->grab();
-  if (GContextMenu) {
-    QPixmap menuPixMap = GContextMenu->grab();
-    pixMap.copy();
-  }
-  return pixMap;
 }
 
 void OrbitMainWindow::on_actionSave_Preset_As_triggered() {
@@ -1009,10 +936,9 @@ void OrbitMainWindow::on_actionHelp_triggered() { app_->ToggleDrawHelp(); }
 
 void OrbitMainWindow::on_actionIntrospection_triggered() {
   if (introspection_widget_ == nullptr) {
-    introspection_widget_ = new OrbitGLWidget();
+    introspection_widget_ = std::make_unique<OrbitGLWidget>();
     introspection_widget_->setWindowFlags(Qt::WindowStaysOnTopHint);
-    introspection_widget_->Initialize(GlCanvas::CanvasType::kIntrospectionWindow, this, 14,
-                                      app_.get());
+    introspection_widget_->Initialize(GlCanvas::CanvasType::kIntrospectionWindow, this, app_.get());
     introspection_widget_->installEventFilter(this);
   }
 
@@ -1023,7 +949,7 @@ void OrbitMainWindow::ShowCaptureOnSaveWarningIfNeeded() {
   QSettings settings;
   const QString skip_capture_warning("SkipCaptureVersionWarning");
   if (!settings.value(skip_capture_warning, false).toBool()) {
-    QMessageBox message_box;
+    QMessageBox message_box(this);
     message_box.setText(
         "Note: Captures saved with this version of Orbit might be incompatible "
         "with future versions. Please check release notes for more "
@@ -1050,7 +976,7 @@ void OrbitMainWindow::ShowEmptyFrameTrackWarningIfNeeded(std::string_view functi
       "was not added to the capture.",
       function);
   if (!settings.value(empty_frame_track_warning, false).toBool()) {
-    QMessageBox message_box;
+    QMessageBox message_box(this);
     message_box.setText(message.c_str());
     message_box.addButton(QMessageBox::Ok);
     QCheckBox check_box("Don't show this message again.");
@@ -1138,17 +1064,6 @@ void OrbitMainWindow::OpenCapture(const std::string& filepath) {
   FindParentTabWidget(ui->CaptureTab)->setCurrentWidget(ui->CaptureTab);
 }
 
-void OrbitMainWindow::OpenDisassembly(std::string a_String, DisassemblyReport report) {
-  auto* dialog = new OrbitDisassemblyDialog(this);
-  dialog->SetText(std::move(a_String));
-  dialog->SetDisassemblyReport(std::move(report));
-  dialog->setWindowTitle("Orbit Disassembly");
-  dialog->setAttribute(Qt::WA_DeleteOnClose);
-  dialog->setWindowFlags(dialog->windowFlags() | Qt::WindowMinimizeButtonHint |
-                         Qt::WindowMaximizeButtonHint);
-  dialog->show();
-}
-
 void OrbitMainWindow::on_actionCheckFalse_triggered() { CHECK(false); }
 
 void OrbitMainWindow::on_actionNullPointerDereference_triggered() {
@@ -1198,7 +1113,7 @@ bool OrbitMainWindow::eventFilter(QObject* watched, QEvent* event) {
         }
       }
     }
-  } else if (watched == introspection_widget_) {
+  } else if (watched == introspection_widget_.get()) {
     if (event->type() == QEvent::Close) {
       app_->StopIntrospection();
     }
@@ -1219,6 +1134,12 @@ void OrbitMainWindow::closeEvent(QCloseEvent* event) {
       app_->AbortCapture();
     }
   } else {
+    if (main_thread_executor_) {
+      main_thread_executor_->AbortWaitingJobs();
+    }
+    if (introspection_widget_ != nullptr) {
+      introspection_widget_->close();
+    }
     QMainWindow::closeEvent(event);
   }
 }
@@ -1243,9 +1164,8 @@ void OrbitMainWindow::SetTarget(const orbit_qt::StadiaTarget& target) {
   target.GetProcessManager()->SetProcessListUpdateListener([&](std::vector<ProcessInfo> processes) {
     // This lambda is called from a background-thread, so we use QMetaObject::invokeMethod
     // to execute our logic on the main thread.
-    QMetaObject::invokeMethod(this, [&, processes = std::move(processes)]() {
-      OnProcessListUpdated(std::move(processes));
-    });
+    QMetaObject::invokeMethod(
+        this, [&, processes = std::move(processes)]() { OnProcessListUpdated(processes); });
   });
 }
 
@@ -1263,9 +1183,8 @@ void OrbitMainWindow::SetTarget(const orbit_qt::LocalTarget& target) {
   target.GetProcessManager()->SetProcessListUpdateListener([&](std::vector<ProcessInfo> processes) {
     // This lambda is called from a background-thread, so we use QMetaObject::invokeMethod
     // to execute our logic on the main thread.
-    QMetaObject::invokeMethod(this, [&, processes = std::move(processes)]() {
-      OnProcessListUpdated(std::move(processes));
-    });
+    QMetaObject::invokeMethod(
+        this, [&, processes = std::move(processes)]() { OnProcessListUpdated(processes); });
   });
 }
 
@@ -1274,25 +1193,8 @@ void OrbitMainWindow::SetTarget(const orbit_qt::FileTarget& target) {
   target_label_->setText(QString::fromStdString(target.GetCaptureFilePath().filename().string()));
 }
 
-void OrbitMainWindow::SetupGrpcAndProcessManager(std::string grpc_server_address) {
-  std::shared_ptr<grpc::Channel> grpc_channel = grpc::CreateCustomChannel(
-      grpc_server_address, grpc::InsecureChannelCredentials(), grpc::ChannelArguments());
-  if (!grpc_channel) {
-    ERROR("Unable to create GRPC channel to %s", grpc_server_address);
-  }
-
-  if (!grpc_channel->WaitForConnected(
-          gpr_time_add(gpr_now(GPR_CLOCK_REALTIME), gpr_time_from_seconds(5, GPR_TIMESPAN)))) {
-    ERROR("Unable to connect via GRPC channel to %s", grpc_server_address);
-  }
-
-  process_manager_ = ProcessManager::Create(grpc_channel, absl::Milliseconds(1000));
-
-  app_->SetGrpcChannel(std::move(grpc_channel));
-  app_->SetProcessManager(process_manager_.get());
-}
-
-void OrbitMainWindow::OnProcessListUpdated(std::vector<orbit_grpc_protos::ProcessInfo> processes) {
+void OrbitMainWindow::OnProcessListUpdated(
+    const std::vector<orbit_grpc_protos::ProcessInfo>& processes) {
   const auto is_current_process = [this](const auto& process) {
     const ProcessData* const target_process = app_->GetTargetProcess();
     return target_process != nullptr && process.pid() == app_->GetTargetProcess()->pid();
@@ -1310,20 +1212,18 @@ void OrbitMainWindow::OnProcessListUpdated(std::vector<orbit_grpc_protos::Proces
     target_label_->setToolTip({});
     target_process_state_ = TargetProcessState::kRunning;
   }
-  UpdateCaptureStateDependentWidgets();
+  UpdateProcessConnectionStateDependentWidgets();
 }
 
-// TODO(170468590): [ui beta] When out of ui beta, this can return TargetConfiguration (without
-// std::optional)
-std::optional<orbit_qt::TargetConfiguration> OrbitMainWindow::ClearTargetConfiguration() {
-  using StadiaTarget = orbit_qt::StadiaTarget;
-  if (target_configuration_.has_value() &&
-      std::holds_alternative<StadiaTarget>(target_configuration_.value())) {
-    std::get<StadiaTarget>(target_configuration_.value())
+orbit_qt::TargetConfiguration OrbitMainWindow::ClearTargetConfiguration() {
+  if (std::holds_alternative<orbit_qt::StadiaTarget>(target_configuration_)) {
+    std::get<orbit_qt::StadiaTarget>(target_configuration_)
+        .GetProcessManager()
+        ->SetProcessListUpdateListener(nullptr);
+  } else if (std::holds_alternative<orbit_qt::LocalTarget>(target_configuration_)) {
+    std::get<orbit_qt::LocalTarget>(target_configuration_)
         .GetProcessManager()
         ->SetProcessListUpdateListener(nullptr);
   }
-  std::optional<orbit_qt::TargetConfiguration> result = std::move(target_configuration_);
-  target_configuration_ = std::nullopt;
-  return result;
+  return std::move(target_configuration_);
 }

@@ -24,8 +24,9 @@
 #include "capture_data.pb.h"
 #include "tracepoint.pb.h"
 
-TracepointTrack::TracepointTrack(TimeGraph* time_graph, int32_t thread_id, OrbitApp* app)
-    : EventTrack(time_graph, app) {
+TracepointTrack::TracepointTrack(TimeGraph* time_graph, int32_t thread_id, OrbitApp* app,
+                                 CaptureData* capture_data)
+    : EventTrack(time_graph, app, capture_data) {
   thread_id_ = thread_id;
 }
 
@@ -65,8 +66,8 @@ void TracepointTrack::Draw(GlCanvas* canvas, PickingMode picking_mode, float z_o
     y1 = y0 - size_[1];
 
     Color picked_color(0, 128, 255, 128);
-    Box box(Vec2(x0, y0), Vec2(x1 - x0, -size_[1]), GlCanvas::kZValueUi + z_offset);
-    batcher->AddBox(box, picked_color, shared_from_this());
+    Box picked_box(Vec2(x0, y0), Vec2(x1 - x0, -size_[1]), GlCanvas::kZValueUi + z_offset);
+    batcher->AddBox(picked_box, picked_color, shared_from_this());
   }
 
   canvas_ = canvas;
@@ -81,25 +82,21 @@ void TracepointTrack::UpdatePrimitives(uint64_t min_tick, uint64_t max_tick,
   const bool picking = picking_mode != PickingMode::kNone;
 
   const Color kWhite(255, 255, 255, 255);
-
   const Color kWhiteTransparent(255, 255, 255, 190);
-
   const Color kGrey(128, 128, 128, 255);
-
   const Color kGreenSelection(0, 255, 0, 255);
 
-  const CaptureData* capture_data = time_graph_->GetCaptureData();
-  CHECK(capture_data != nullptr);
+  CHECK(capture_data_ != nullptr);
 
   if (!picking) {
-    capture_data->ForEachTracepointEventOfThreadInTimeRange(
+    capture_data_->ForEachTracepointEventOfThreadInTimeRange(
         thread_id_, min_tick, max_tick,
         [&](const orbit_client_protos::TracepointEventInfo& tracepoint) {
           uint64_t time = tracepoint.time();
           float radius = track_height / 4;
           Vec2 pos(time_graph_->GetWorldFromTick(time), pos_[1]);
           if (thread_id_ == orbit_base::kAllThreadsOfAllProcessesTid) {
-            const Color color = tracepoint.pid() == capture_data->process_id() ? kGrey : kWhite;
+            const Color color = tracepoint.pid() == capture_data_->process_id() ? kGrey : kWhite;
             batcher->AddVerticalLine(pos, -track_height, z, color);
           } else {
             batcher->AddVerticalLine(pos, -radius, z, kWhiteTransparent);
@@ -114,7 +111,7 @@ void TracepointTrack::UpdatePrimitives(uint64_t min_tick, uint64_t max_tick,
     constexpr float kPickingBoxWidth = 9.0f;
     constexpr float kPickingBoxOffset = kPickingBoxWidth / 2.0f;
 
-    capture_data->ForEachTracepointEventOfThreadInTimeRange(
+    capture_data_->ForEachTracepointEventOfThreadInTimeRange(
         thread_id_, min_tick, max_tick,
         [&](const orbit_client_protos::TracepointEventInfo& tracepoint) {
           uint64_t time = tracepoint.time();
@@ -122,14 +119,12 @@ void TracepointTrack::UpdatePrimitives(uint64_t min_tick, uint64_t max_tick,
                    pos_[1] - track_height + 1);
           Vec2 size(kPickingBoxWidth, track_height);
           auto user_data = std::make_unique<PickingUserData>(
-              nullptr, [&](PickingId id) -> std::string { return GetSampleTooltip(id); });
+              nullptr, [&](PickingId id) -> std::string { return GetTracepointTooltip(id); });
           user_data->custom_data_ = &tracepoint;
           batcher->AddShadedBox(pos, size, z, kGreenSelection, std::move(user_data));
         });
   }
 }
-
-void TracepointTrack::SetPos(float x, float y) { pos_ = Vec2(x, y); }
 
 void TracepointTrack::OnPick(int x, int y) {
   Vec2& mouse_pos = mouse_pos_[0];
@@ -140,7 +135,7 @@ void TracepointTrack::OnPick(int x, int y) {
 
 void TracepointTrack::OnRelease() { picked_ = false; }
 
-std::string TracepointTrack::GetSampleTooltip(PickingId id) const {
+std::string TracepointTrack::GetTracepointTooltip(PickingId id) const {
   auto user_data = time_graph_->GetBatcher().GetUserData(id);
   CHECK(user_data && user_data->custom_data_);
 
@@ -149,10 +144,9 @@ std::string TracepointTrack::GetSampleTooltip(PickingId id) const {
 
   uint64_t tracepoint_info_key = tracepoint_event_info->tracepoint_info_key();
 
-  const CaptureData* capture_data = time_graph_->GetCaptureData();
-  CHECK(capture_data != nullptr);
+  CHECK(capture_data_ != nullptr);
 
-  TracepointInfo tracepoint_info = capture_data->GetTracepointInfo(tracepoint_info_key);
+  TracepointInfo tracepoint_info = capture_data_->GetTracepointInfo(tracepoint_info_key);
 
   if (thread_id_ == orbit_base::kAllThreadsOfAllProcessesTid) {
     return absl::StrFormat(
@@ -163,8 +157,8 @@ std::string TracepointTrack::GetSampleTooltip(PickingId id) const {
         "<b>Process:</b> %s [%d]<br/>"
         "<b>Thread:</b> %s [%d]<br/>",
         tracepoint_info.category(), tracepoint_info.name(), tracepoint_event_info->cpu(),
-        capture_data->GetThreadName(tracepoint_event_info->pid()), tracepoint_event_info->pid(),
-        capture_data->GetThreadName(tracepoint_event_info->tid()), tracepoint_event_info->tid());
+        capture_data_->GetThreadName(tracepoint_event_info->pid()), tracepoint_event_info->pid(),
+        capture_data_->GetThreadName(tracepoint_event_info->tid()), tracepoint_event_info->tid());
   } else {
     return absl::StrFormat(
         "<b>%s : %s</b><br/>"
@@ -176,7 +170,6 @@ std::string TracepointTrack::GetSampleTooltip(PickingId id) const {
 }
 
 bool TracepointTrack::IsEmpty() const {
-  const CaptureData* capture_data = time_graph_->GetCaptureData();
-  if (capture_data == nullptr) return true;
-  return capture_data->GetNumTracepointsForThreadId(thread_id_) == 0;
+  if (capture_data_ == nullptr) return true;
+  return capture_data_->GetNumTracepointsForThreadId(thread_id_) == 0;
 }

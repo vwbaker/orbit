@@ -33,6 +33,7 @@
 #include "DataView.h"
 #include "DataViewTypes.h"
 #include "DisassemblyReport.h"
+#include "FilterPanelWidgetAction.h"
 #include "MainThreadExecutor.h"
 #include "MetricsUploader/MetricsUploader.h"
 #include "OrbitClientServices/ProcessManager.h"
@@ -54,12 +55,8 @@ class OrbitMainWindow : public QMainWindow {
  public:
   static constexpr int kEndSessionReturnCode = 1;
 
-  // TODO (170468590) remove when not needed anymore
-  explicit OrbitMainWindow(orbit_qt::ServiceDeployManager* service_deploy_manager,
-                           std::string grpc_server_address, uint32_t font_size,
+  explicit OrbitMainWindow(orbit_qt::TargetConfiguration target_configuration,
                            orbit_metrics_uploader::MetricsUploader* metrics_uploader = nullptr);
-
-  explicit OrbitMainWindow(orbit_qt::TargetConfiguration target_configuration, uint32_t font_size);
   ~OrbitMainWindow() override;
 
   void RegisterGlWidget(OrbitGLWidget* widget) { gl_widgets_.push_back(widget); }
@@ -73,9 +70,9 @@ class OrbitMainWindow : public QMainWindow {
   void UpdatePanel(DataViewType a_Type);
 
   void OnNewSamplingReport(DataView* callstack_data_view,
-                           std::shared_ptr<class SamplingReport> sampling_report);
+                           const std::shared_ptr<class SamplingReport>& sampling_report);
   void OnNewSelectionReport(DataView* callstack_data_view,
-                            std::shared_ptr<class SamplingReport> sampling_report);
+                            const std::shared_ptr<class SamplingReport>& sampling_report);
 
   void OnNewTopDownView(std::unique_ptr<CallTreeView> top_down_view);
   void OnNewSelectionTopDownView(std::unique_ptr<CallTreeView> selection_top_down_view);
@@ -85,7 +82,6 @@ class OrbitMainWindow : public QMainWindow {
 
   std::string OnGetSaveFileName(const std::string& extension);
   void OnSetClipboard(const std::string& text);
-  void OpenDisassembly(std::string a_String, DisassemblyReport report);
   void OpenCapture(const std::string& filepath);
   void OnCaptureCleared();
 
@@ -95,10 +91,14 @@ class OrbitMainWindow : public QMainWindow {
 
   void RestoreDefaultTabLayout();
 
-  std::optional<orbit_qt::TargetConfiguration> ClearTargetConfiguration();
+  [[nodiscard]] orbit_qt::TargetConfiguration ClearTargetConfiguration();
 
  protected:
   void closeEvent(QCloseEvent* event) override;
+
+ public slots:
+  void OnFilterFunctionsTextChanged(const QString& text);
+  void OnFilterTracksTextChanged(const QString& text);
 
  private slots:
   void on_actionOpenUserDataDirectory_triggered();
@@ -109,8 +109,6 @@ class OrbitMainWindow : public QMainWindow {
 
   void OnTimer();
   void OnLiveTabFunctionsFilterTextChanged(const QString& text);
-  void OnFilterFunctionsTextChanged(const QString& text);
-  void OnFilterTracksTextChanged(const QString& text);
 
   void on_actionOpen_Preset_triggered();
   void on_actionEnd_Session_triggered();
@@ -139,8 +137,7 @@ class OrbitMainWindow : public QMainWindow {
  private:
   void StartMainTimer();
   void SetupCaptureToolbar();
-  void SetupCodeView();
-  void SetupMainWindow(uint32_t font_size);
+  void SetupMainWindow();
   void SetupHintFrame();
   void SetupTargetLabel();
 
@@ -150,6 +147,7 @@ class OrbitMainWindow : public QMainWindow {
 
   void CreateTabBarContextMenu(QTabWidget* tab_widget, int tab_index, const QPoint pos);
   void UpdateCaptureStateDependentWidgets();
+  void UpdateProcessConnectionStateDependentWidgets();
 
   void UpdateActiveTabsAfterSelection(bool selection_has_samples);
 
@@ -159,28 +157,26 @@ class OrbitMainWindow : public QMainWindow {
   void SetTarget(const orbit_qt::LocalTarget& target);
   void SetTarget(const orbit_qt::FileTarget& target);
 
-  // TODO(170468590): [ui beta] When out of ui beta, this is not needed anymore (is done by
-  // ProfilingTargetDialog)
-  void SetupGrpcAndProcessManager(std::string grpc_server_address);
-
-  void OnProcessListUpdated(std::vector<orbit_grpc_protos::ProcessInfo> processes);
+  void OnProcessListUpdated(const std::vector<orbit_grpc_protos::ProcessInfo>& processes);
 
   static const QString kCollectThreadStatesSettingKey;
   void LoadCaptureOptionsIntoApp();
 
  private:
-  std::unique_ptr<MainThreadExecutor> main_thread_executor_;
+  std::shared_ptr<MainThreadExecutor> main_thread_executor_;
   std::unique_ptr<OrbitApp> app_;
   Ui::OrbitMainWindow* ui;
+  FilterPanelWidgetAction* filter_panel_action_ = nullptr;
   QTimer* m_MainTimer = nullptr;
   std::vector<OrbitGLWidget*> gl_widgets_;
-  OrbitGLWidget* introspection_widget_ = nullptr;
+  std::unique_ptr<OrbitGLWidget> introspection_widget_ = nullptr;
   QFrame* hint_frame_ = nullptr;
   QLabel* target_label_ = nullptr;
 
   // Capture toolbar.
   QIcon icon_start_capture_;
   QIcon icon_stop_capture_;
+  QIcon icon_toolbar_extension_;
 
   QIcon icon_keyboard_arrow_left_;
   QIcon icon_keyboard_arrow_right_;
@@ -194,12 +190,7 @@ class OrbitMainWindow : public QMainWindow {
   };
   std::map<QTabWidget*, TabWidgetLayout> default_tab_layout_;
 
-  // TODO(170468590): [ui beta] When out of ui beta, this process_manager_ is not needed anymore,
-  // since the one from the Target is used;
-  std::unique_ptr<ProcessManager> process_manager_;
-
-  // TODO(170468590): [ui beta] When out of ui beta, this does not need to be an optional anymore
-  std::optional<orbit_qt::TargetConfiguration> target_configuration_;
+  orbit_qt::TargetConfiguration target_configuration_;
 
   enum class TargetProcessState { kRunning, kEnded };
 

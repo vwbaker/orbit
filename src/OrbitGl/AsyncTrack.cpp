@@ -30,8 +30,9 @@
 using orbit_client_protos::FunctionInfo;
 using orbit_client_protos::TimerInfo;
 
-AsyncTrack::AsyncTrack(TimeGraph* time_graph, const std::string& name, OrbitApp* app)
-    : TimerTrack(time_graph, app) {
+AsyncTrack::AsyncTrack(TimeGraph* time_graph, const std::string& name, OrbitApp* app,
+                       CaptureData* capture_data)
+    : TimerTrack(time_graph, app, capture_data) {
   SetName(name);
   SetLabel(name);
 }
@@ -41,14 +42,13 @@ AsyncTrack::AsyncTrack(TimeGraph* time_graph, const std::string& name, OrbitApp*
   if (text_box == nullptr) return "";
   auto* manual_inst_manager = app_->GetManualInstrumentationManager();
   TimerInfo timer_info = text_box->GetTimerInfo();
-  orbit_api::Event event = manual_inst_manager->ApiEventFromTimerInfo(timer_info);
+  orbit_api::Event event = ManualInstrumentationManager::ApiEventFromTimerInfo(timer_info);
 
   // The FunctionInfo here corresponds to one of the automatically instrumented empty stubs from
   // Orbit.h. Use it to retrieve the module from which the manually instrumented scope originated.
-  const CaptureData* capture_data = time_graph_->GetCaptureData();
   const FunctionInfo* func =
-      capture_data
-          ? capture_data->GetInstrumentedFunctionById(text_box->GetTimerInfo().function_id())
+      capture_data_
+          ? capture_data_->GetInstrumentedFunctionById(text_box->GetTimerInfo().function_id())
           : nullptr;
   CHECK(func || timer_info.type() == TimerInfo::kIntrospection);
   std::string module_name =
@@ -121,14 +121,15 @@ Color AsyncTrack::GetTimerColor(const TimerInfo& timer_info, bool is_selected) c
   const Color kSelectionColor(0, 128, 255, 255);
   if (is_selected) {
     return kSelectionColor;
-  } else if (!IsTimerActive(timer_info)) {
+  }
+  if (!IsTimerActive(timer_info)) {
     return kInactiveColor;
   }
 
   orbit_api::Event event = ManualInstrumentationManager::ApiEventFromTimerInfo(timer_info);
   const uint64_t event_id = event.data;
   std::string name = app_->GetManualInstrumentationManager()->GetString(event_id);
-  Color color = time_graph_->GetColor(name);
+  Color color = TimeGraph::GetColor(name);
 
   constexpr uint8_t kOddAlpha = 210;
   if (!(timer_info.depth() & 0x1)) {

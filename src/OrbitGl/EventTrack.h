@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef ORBIT_GL_EVENT_TRACK_H_
+#define ORBIT_GL_EVENT_TRACK_H_
 
 #include <GteVector.h>
 #include <stdint.h>
@@ -21,7 +22,7 @@ class TimeGraph;
 
 class EventTrack : public Track {
  public:
-  explicit EventTrack(TimeGraph* time_graph, OrbitApp* app);
+  explicit EventTrack(TimeGraph* time_graph, OrbitApp* app, CaptureData* capture_data);
   Type GetType() const override { return kEventTrack; }
 
   std::string GetTooltip() const override;
@@ -44,12 +45,15 @@ class EventTrack : public Track {
 
  protected:
   void SelectEvents();
-  [[nodiscard]] std::string GetSampleTooltip(PickingId id) const;
   [[nodiscard]] std::string SafeGetFormattedFunctionName(uint64_t addr, int max_line_length) const;
   [[nodiscard]] std::string FormatCallstackForTooltip(const CallStack& callstack,
                                                       int max_line_length = 80, int max_lines = 20,
                                                       int bottom_n_lines = 5) const;
 
  private:
+  [[nodiscard]] std::string GetSampleTooltip(PickingId id) const;
+
   OrbitApp* app_ = nullptr;
 };
+
+#endif  // ORBIT_GL_EVENT_TRACK_H_

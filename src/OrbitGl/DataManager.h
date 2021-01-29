@@ -12,13 +12,12 @@
 #include <thread>
 #include <vector>
 
+#include "GrpcProtos/Constants.h"
 #include "OrbitClientData/FunctionInfoSet.h"
-#include "OrbitClientData/ProcessData.h"
 #include "OrbitClientData/TracepointCustom.h"
 #include "OrbitClientData/UserDefinedCaptureData.h"
 #include "TextBox.h"
 #include "capture_data.pb.h"
-#include "process.pb.h"
 #include "tracepoint.pb.h"
 
 // This class is responsible for storing and
@@ -31,8 +30,6 @@ class DataManager final {
   explicit DataManager(std::thread::id thread_id = std::this_thread::get_id())
       : main_thread_id_(thread_id) {}
 
-  void UpdateProcessInfos(const std::vector<orbit_grpc_protos::ProcessInfo>& process_infos);
-
   void SelectFunction(const orbit_client_protos::FunctionInfo& function);
   void DeselectFunction(const orbit_client_protos::FunctionInfo& function);
   void ClearSelectedFunctions();
@@ -41,7 +38,6 @@ class DataManager final {
   void set_selected_thread_id(int32_t thread_id);
   void set_selected_text_box(const TextBox* text_box);
 
-  [[nodiscard]] ProcessData* GetMutableProcessByPid(int32_t process_id);
   [[nodiscard]] bool IsFunctionSelected(const orbit_client_protos::FunctionInfo& function) const;
   [[nodiscard]] std::vector<orbit_client_protos::FunctionInfo> GetSelectedFunctions() const;
   [[nodiscard]] bool IsFunctionVisible(uint64_t function_address) const;
@@ -76,15 +72,11 @@ class DataManager final {
   }
   [[nodiscard]] bool collect_thread_states() const { return collect_thread_states_; }
 
-  static constexpr uint64_t kInvalidFunctionId = 0;
-
  private:
   const std::thread::id main_thread_id_;
-  // We are sharing pointers to that entries and ensure reference stability by using node_hash_map
-  absl::node_hash_map<int32_t, ProcessData> process_map_;
   FunctionInfoSet selected_functions_;
   absl::flat_hash_set<uint64_t> visible_function_ids_;
-  uint64_t highlighted_function_id_ = kInvalidFunctionId;
+  uint64_t highlighted_function_id_ = orbit_grpc_protos::kInvalidFunctionId;
 
   TracepointInfoSet selected_tracepoints_;
 

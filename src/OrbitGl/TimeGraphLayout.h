@@ -5,6 +5,8 @@
 #ifndef ORBIT_GL_TIME_GRAPH_LAYOUT_H_
 #define ORBIT_GL_TIME_GRAPH_LAYOUT_H_
 
+#include <stdint.h>
+
 class TimeGraphLayout {
  public:
   TimeGraphLayout();
@@ -38,13 +40,11 @@ class TimeGraphLayout {
   float GetScale() const { return scale_; }
   void SetScale(float value) { scale_ = value; }
   void SetDrawProperties(bool value) { draw_properties_ = value; }
-  void SetNumCores(int a_NumCores) { num_cores_ = a_NumCores; }
   bool DrawProperties();
   bool GetDrawTrackBackground() const { return draw_track_background_; }
+  uint32_t GetFontSize() const { return font_size_; }
 
  protected:
-  int num_cores_;
-
   float text_box_height_;
   float core_height_;
   float thread_state_track_height_;
@@ -64,6 +64,8 @@ class TimeGraphLayout {
   float text_offset_;
   float right_margin_;
   float scheduler_track_offset_;
+
+  uint32_t font_size_;
 
   float space_between_cores_;
   float space_between_gpu_depths_;

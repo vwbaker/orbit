@@ -12,13 +12,17 @@
 #include "TrackAccessibility.h"
 #include "TrackManager.h"
 
+using orbit_accessibility::AccessibilityRect;
+using orbit_accessibility::AccessibilityState;
+using orbit_accessibility::AccessibleInterface;
+
 AccessibilityRect TimeGraphAccessibility::AccessibleLocalRect() const {
   GlCanvas* canvas = time_graph_->GetCanvas();
   return AccessibilityRect(0, 0, canvas->GetWidth(), canvas->GetHeight());
 }
 
 AccessibilityState TimeGraphAccessibility::AccessibleState() const {
-  return orbit_gl::AccessibilityState::Focusable;
+  return AccessibilityState::Focusable;
 }
 
 int TimeGraphAccessibility::AccessibleChildCount() const {

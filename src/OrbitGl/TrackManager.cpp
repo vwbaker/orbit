@@ -55,11 +55,9 @@ void TrackManager::Clear() {
   tracepoints_system_wide_track_ = GetOrCreateThreadTrack(orbit_base::kAllThreadsOfAllProcessesTid);
 }
 
-void TrackManager::SetStringManager(StringManager* str_manager) { string_manager_ = str_manager; }
-
 std::vector<Track*> TrackManager::GetAllTracks() const {
   std::vector<Track*> tracks;
-  for (auto track : all_tracks_) {
+  for (const auto& track : all_tracks_) {
     tracks.push_back(track.get());
   }
   return tracks;
@@ -80,6 +78,13 @@ std::vector<FrameTrack*> TrackManager::GetFrameTracks() const {
     tracks.push_back(track.get());
   }
   return tracks;
+}
+
+void TrackManager::SetCaptureData(CaptureData* capture_data) {
+  capture_data_ = capture_data;
+  for (Track* track : GetAllTracks()) {
+    track->SetCaptureData(capture_data);
+  }
 }
 
 void TrackManager::SortTracks() {
@@ -133,8 +138,7 @@ void TrackManager::SortTracks() {
     }
 
     // Separate "capture_pid" tracks from tracks that originate from other processes.
-    const CaptureData* capture_data = time_graph_->GetCaptureData();
-    int32_t capture_pid = capture_data ? capture_data->process_id() : 0;
+    int32_t capture_pid = capture_data_ ? capture_data_->process_id() : 0;
     std::vector<Track*> capture_pid_tracks;
     std::vector<Track*> external_pid_tracks;
     for (auto& track : all_processes_sorted_tracks) {
@@ -193,12 +197,12 @@ void TrackManager::UpdateFilteredTrackList() {
 std::vector<ThreadTrack*> TrackManager::GetSortedThreadTracks() {
   std::vector<ThreadTrack*> sorted_tracks;
   absl::flat_hash_map<ThreadTrack*, uint32_t> num_events_by_track;
-  const CaptureData* capture_data = time_graph_->GetCaptureData();
-  const CallstackData* callstack_data = capture_data ? capture_data->GetCallstackData() : nullptr;
+  const CallstackData* callstack_data = capture_data_ ? capture_data_->GetCallstackData() : nullptr;
 
   for (auto& [tid, track] : thread_tracks_) {
-    if (tid == orbit_base::kAllProcessThreadsTid)
+    if (tid == orbit_base::kAllProcessThreadsTid) {
       continue;  // "kAllProcessThreadsTid" is handled separately.
+    }
     sorted_tracks.push_back(track.get());
     uint32_t num_events = callstack_data ? callstack_data->GetCallstackEventsOfTidCount(tid) : 0;
     num_events_by_track[track.get()] = num_events;
@@ -316,7 +320,7 @@ void TrackManager::UpdateTracks(uint64_t min_tick, uint64_t max_tick, PickingMod
   tracks_total_height_ = std::abs(current_y);
 }
 
-void TrackManager::AddTrack(std::shared_ptr<Track> track) {
+void TrackManager::AddTrack(const std::shared_ptr<Track>& track) {
   all_tracks_.push_back(track);
   sorting_invalidated_ = true;
 }
@@ -333,12 +337,9 @@ SchedulerTrack* TrackManager::GetOrCreateSchedulerTrack() {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   std::shared_ptr<SchedulerTrack> track = scheduler_track_;
   if (track == nullptr) {
-    track = std::make_shared<SchedulerTrack>(time_graph_, app_);
+    track = std::make_shared<SchedulerTrack>(time_graph_, app_, capture_data_);
     AddTrack(track);
     scheduler_track_ = track;
-    uint32_t num_cores = time_graph_->GetNumCores();
-    time_graph_->GetLayout().SetNumCores(num_cores);
-    scheduler_track_->SetLabel(absl::StrFormat("Scheduler (%u cores)", num_cores));
   }
   return track.get();
 }
@@ -347,29 +348,9 @@ ThreadTrack* TrackManager::GetOrCreateThreadTrack(int32_t tid) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   std::shared_ptr<ThreadTrack> track = thread_tracks_[tid];
   if (track == nullptr) {
-    track = std::make_shared<ThreadTrack>(time_graph_, tid, app_);
+    track = std::make_shared<ThreadTrack>(time_graph_, tid, app_, capture_data_);
     AddTrack(track);
     thread_tracks_[tid] = track;
-    track->SetTrackColor(TimeGraph::GetThreadColor(tid));
-    if (tid == orbit_base::kAllThreadsOfAllProcessesTid) {
-      track->SetName("All tracepoint events");
-      track->SetLabel("All tracepoint events");
-    } else if (tid == orbit_base::kAllProcessThreadsTid) {
-      // This is the process track.
-      const CaptureData& capture_data = app_->GetCaptureData();
-      std::string process_name = capture_data.process_name();
-      track->SetName(process_name);
-      const std::string_view all_threads = " (all_threads)";
-      track->SetLabel(process_name.append(all_threads));
-      track->SetNumberOfPrioritizedTrailingCharacters(all_threads.size() - 1);
-    } else {
-      const std::string& thread_name = time_graph_->GetThreadNameFromTid(tid);
-      track->SetName(thread_name);
-      std::string tid_str = std::to_string(tid);
-      std::string track_label = absl::StrFormat("%s [%s]", thread_name, tid_str);
-      track->SetNumberOfPrioritizedTrailingCharacters(tid_str.size() + 2);
-      track->SetLabel(track_label);
-    }
   }
   return track.get();
 }
@@ -378,13 +359,7 @@ GpuTrack* TrackManager::GetOrCreateGpuTrack(uint64_t timeline_hash) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   std::shared_ptr<GpuTrack> track = gpu_tracks_[timeline_hash];
   if (track == nullptr) {
-    track = std::make_shared<GpuTrack>(time_graph_, string_manager_, timeline_hash, app_);
-    std::string timeline = string_manager_->Get(timeline_hash).value_or("");
-    std::string label = orbit_gl::MapGpuTimelineToTrackLabel(timeline);
-    track->SetName(timeline);
-    track->SetLabel(label);
-    // This min combine two cases, label == timeline and when label includes timeline
-    track->SetNumberOfPrioritizedTrailingCharacters(std::min(label.size(), timeline.size() + 2));
+    track = std::make_shared<GpuTrack>(time_graph_, timeline_hash, app_, capture_data_);
     AddTrack(track);
     gpu_tracks_[timeline_hash] = track;
   }
@@ -395,9 +370,7 @@ GraphTrack* TrackManager::GetOrCreateGraphTrack(const std::string& name) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   std::shared_ptr<GraphTrack> track = graph_tracks_[name];
   if (track == nullptr) {
-    track = std::make_shared<GraphTrack>(time_graph_, name);
-    track->SetName(name);
-    track->SetLabel(name);
+    track = std::make_shared<GraphTrack>(time_graph_, name, capture_data_);
     AddTrack(track);
     graph_tracks_[name] = track;
   }
@@ -408,7 +381,7 @@ AsyncTrack* TrackManager::GetOrCreateAsyncTrack(const std::string& name) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   std::shared_ptr<AsyncTrack> track = async_tracks_[name];
   if (track == nullptr) {
-    track = std::make_shared<AsyncTrack>(time_graph_, name, app_);
+    track = std::make_shared<AsyncTrack>(time_graph_, name, app_, capture_data_);
     AddTrack(track);
     async_tracks_[name] = track;
   }
@@ -424,7 +397,8 @@ FrameTrack* TrackManager::GetOrCreateFrameTrack(uint64_t function_id,
     return track_it->second.get();
   }
 
-  auto track = std::make_shared<FrameTrack>(time_graph_, function_id, function, app_);
+  auto track =
+      std::make_shared<FrameTrack>(time_graph_, function_id, function, app_, capture_data_);
 
   // Normally we would call AddTrack(track) here, but frame tracks are removable by users
   // and therefore cannot be simply thrown into the flat vector of tracks.

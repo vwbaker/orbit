@@ -34,16 +34,49 @@
 using orbit_client_protos::FunctionInfo;
 using orbit_client_protos::TimerInfo;
 
-ThreadTrack::ThreadTrack(TimeGraph* time_graph, int32_t thread_id, OrbitApp* app)
-    : TimerTrack(time_graph, app) {
+ThreadTrack::ThreadTrack(TimeGraph* time_graph, int32_t thread_id, OrbitApp* app,
+                         CaptureData* capture_data)
+    : TimerTrack(time_graph, app, capture_data) {
   thread_id_ = thread_id;
+  InitializeNameAndLabel(thread_id);
 
-  thread_state_track_ = std::make_shared<ThreadStateTrack>(time_graph, thread_id, app_);
+  thread_state_track_ =
+      std::make_shared<ThreadStateTrack>(time_graph, thread_id, app_, capture_data);
 
-  event_track_ = std::make_shared<EventTrack>(time_graph, app_);
+  event_track_ = std::make_shared<EventTrack>(time_graph, app_, capture_data);
   event_track_->SetThreadId(thread_id);
 
-  tracepoint_track_ = std::make_shared<TracepointTrack>(time_graph, thread_id, app_);
+  tracepoint_track_ = std::make_shared<TracepointTrack>(time_graph, thread_id, app_, capture_data);
+  SetTrackColor(TimeGraph::GetThreadColor(thread_id));
+}
+
+void ThreadTrack::InitializeNameAndLabel(int32_t thread_id) {
+  if (thread_id == orbit_base::kAllThreadsOfAllProcessesTid) {
+    SetName("All tracepoint events");
+    SetLabel("All tracepoint events");
+  } else if (thread_id == orbit_base::kAllProcessThreadsTid) {
+    // This is the process track.
+    const CaptureData& capture_data = app_->GetCaptureData();
+    std::string process_name = capture_data.process_name();
+    SetName(process_name);
+    const std::string_view all_threads = " (all_threads)";
+    SetLabel(process_name.append(all_threads));
+    SetNumberOfPrioritizedTrailingCharacters(all_threads.size() - 1);
+  } else {
+    const std::string& thread_name = time_graph_->GetThreadNameFromTid(thread_id);
+    SetName(thread_name);
+    std::string tid_str = std::to_string(thread_id);
+    std::string track_label = absl::StrFormat("%s [%s]", thread_name, tid_str);
+    SetLabel(track_label);
+    SetNumberOfPrioritizedTrailingCharacters(tid_str.size() + 2);
+  }
+}
+
+void ThreadTrack::SetCaptureData(CaptureData* capture_data) {
+  Track::SetCaptureData(capture_data);
+  thread_state_track_->SetCaptureData(capture_data);
+  event_track_->SetCaptureData(capture_data);
+  tracepoint_track_->SetCaptureData(capture_data);
 }
 
 const TextBox* ThreadTrack::GetLeft(const TextBox* text_box) const {
@@ -70,10 +103,9 @@ std::string ThreadTrack::GetBoxTooltip(PickingId id) const {
     return "";
   }
 
-  const CaptureData* capture_data = time_graph_->GetCaptureData();
   const FunctionInfo* func =
-      capture_data
-          ? capture_data->GetInstrumentedFunctionById(text_box->GetTimerInfo().function_id())
+      capture_data_
+          ? capture_data_->GetInstrumentedFunctionById(text_box->GetTimerInfo().function_id())
           : nullptr;
 
   if (!func) {
@@ -135,7 +167,8 @@ Color ThreadTrack::GetTimerColor(const TimerInfo& timer_info, bool is_selected) 
   const Color kSelectionColor(0, 128, 255, 255);
   if (is_selected) {
     return kSelectionColor;
-  } else if (!IsTimerActive(timer_info)) {
+  }
+  if (!IsTimerActive(timer_info)) {
     return kInactiveColor;
   }
 
@@ -150,10 +183,10 @@ Color ThreadTrack::GetTimerColor(const TimerInfo& timer_info, bool is_selected) 
     color = user_color.value();
   } else if (timer_info.type() == TimerInfo::kIntrospection) {
     orbit_api::Event event = ManualInstrumentationManager::ApiEventFromTimerInfo(timer_info);
-    color = event.color == orbit::Color::kAuto ? time_graph_->GetColor(event.name)
+    color = event.color == orbit::Color::kAuto ? TimeGraph::GetColor(event.name)
                                                : ToColor(static_cast<uint64_t>(event.color));
   } else {
-    color = time_graph_->GetThreadColor(timer_info.thread_id());
+    color = TimeGraph::GetThreadColor(timer_info.thread_id());
   }
 
   constexpr uint8_t kOddAlpha = 210;

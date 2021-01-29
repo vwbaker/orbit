@@ -179,6 +179,9 @@
             </item>
             <item>
              <widget class="QLabel" name="selectedFileLabel">
+              <property name="visible">
+               <bool>false</bool>
+              </property>
               <property name="text">
                <string/>
               </property>
@@ -337,12 +340,19 @@
          </spacer>
         </item>
         <item>
+         <widget class="QLabel" name="targetLabel">
+          <property name="text">
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QPushButton" name="confirmButton">
           <property name="accessibleName">
            <string>StartOrbit</string>
           </property>
           <property name="text">
-           <string>OK</string>
+           <string>Start Session</string>
           </property>
          </widget>
         </item>
@@ -366,7 +376,7 @@
   </customwidget>
  </customwidgets>
  <resources>
-  <include location="../icons/orbiticons.qrc"/>
+  <include location="../../icons/orbiticons.qrc"/>
  </resources>
  <connections/>
 </ui>
