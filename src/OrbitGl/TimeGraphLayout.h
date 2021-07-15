@@ -16,6 +16,8 @@ class TimeGraphLayout {
   float GetTextCoresHeight() const { return core_height_ * scale_; }
   float GetThreadStateTrackHeight() const { return thread_state_track_height_ * scale_; }
   float GetEventTrackHeight() const { return event_track_height_ * scale_; }
+  float GetAllThreadsEventTrackHeight() const { return all_threads_event_track_height_ * scale_; }
+  float GetEventTrackHeightFromTid(int32_t tid) const;
   float GetVariableTrackHeight() const { return variable_track_height_ * scale_; }
   float GetTrackBottomMargin() const { return track_bottom_margin_ * scale_; }
   float GetTrackTopMargin() const { return track_top_margin_ * scale_; }
@@ -56,6 +58,7 @@ class TimeGraphLayout {
   float core_height_;
   float thread_state_track_height_;
   float event_track_height_;
+  float all_threads_event_track_height_;
   float variable_track_height_;
   float track_bottom_margin_;
   float track_top_margin_;
